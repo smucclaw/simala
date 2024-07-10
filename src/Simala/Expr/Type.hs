@@ -44,7 +44,8 @@ data Builtin =
   | And        -- flexible arity
   | Or         -- flexible arity
   | IfThenElse -- arity 3
-  | Fold       -- arity 3
+  | Foldl      -- arity 3
+  | Foldr      -- arity 3
   deriving stock Show
 
 data Val =

@@ -82,7 +82,8 @@ instance Render Builtin where
   render And        = "and"
   render Or         = "ord"
   render IfThenElse = "ifthenelse"
-  render Fold       = "fold"
+  render Foldr      = "foldr"
+  render Foldl      = "foldl"
 
 instance Render Lit where
   render :: Lit -> String

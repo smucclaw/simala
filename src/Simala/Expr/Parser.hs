@@ -152,5 +152,6 @@ builtins =
     , ("and", And)
     , ("or", Or)
     , ("not", Not)
-    , ("fold", Fold)
+    , ("foldr", Foldr)
+    , ("foldl", Foldl)
     ]

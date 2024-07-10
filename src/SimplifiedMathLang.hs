@@ -31,14 +31,19 @@ exampleActions =
 
 revExample :: Expr
 revExample =
-  Fun Opaque ["xs"] (Builtin Fold [List [], Fun Opaque ["acc", "x"] (Cons (Var "x") (Var "acc")), Var "xs"])
+  Fun Opaque ["xs"] (Builtin Foldl [Fun Opaque ["acc", "x"] (Cons (Var "x") (Var "acc")), List [], Var "xs"])
+
+mapExample :: Expr
+mapExample =
+  Fun Opaque ["f", "xs"] (Builtin Foldr [Fun Opaque ["x", "r"] (Cons (App (Var "f") [Var "x"]) (Var "r")), List [], Var "xs"])
 
 revExample' :: Expr
 revExample' =
   Let Opaque "rev" revExample (App (Var "rev") [List [Lit (IntLit 1), Lit (IntLit 2), Lit (IntLit 3)]])
 
--- >>> buildEvalTrace exampleActions
--- Trace (Builtin Sum [Lit (IntLit 2),Lit (IntLit 3)]) [Trace (Lit (IntLit 2)) [] (VInt 2),Trace (Lit (IntLit 3)) [] (VInt 3)] (VInt 5)
+incListExample :: Expr
+incListExample =
+  Let Opaque "map" mapExample (App (Var "map") [Fun Transparent ["x"] (Builtin Sum [Var "x", Lit (IntLit 1)]), List [Lit (IntLit 1), Lit (IntLit 2), Lit (IntLit 3)]])
 
 parseExpr :: Text -> IO ()
 parseExpr e = parseTest (expr <* eof) e

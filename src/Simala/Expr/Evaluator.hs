@@ -169,11 +169,11 @@ evalBuiltin IfThenElse es = do
   v <- eval c
   b <- expectBool v
   if b then eval t else eval e
-evalBuiltin Fold es = do
+evalBuiltin Foldl es = do
   (e1, e2, e3) <- expectArity3 es
   vs <- (eval >=> expectList) e3
-  vini <- eval e1
-  c <- (eval >=> expectFunction) e2
+  vini <- eval e2
+  c <- (eval >=> expectFunction) e1
   let
     loop !acc list =
       case list of
@@ -182,6 +182,17 @@ evalBuiltin Fold es = do
           acc' <- evalClosureVal c [acc, w]
           loop acc' ws
   loop vini vs
+evalBuiltin Foldr es = do
+  (e1, e2, e3) <- expectArity3 es
+  vs <- (eval >=> expectList) e3
+  vnil <- eval e2
+  c <- (eval >=> expectFunction) e1
+  let
+    go []       = pure vnil
+    go (w : ws) = do
+      r <- go ws
+      evalClosureVal c [w, r]
+  go vs
 
 doEval :: Expr -> IO ()
 doEval e =
