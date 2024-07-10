@@ -110,12 +110,15 @@ builtin2 f e1 e2 = Builtin f [e1, e2]
 baseExpr :: Parser Expr
 baseExpr =
       Let Transparent <$ keyword "let" <*> name <* symbol "=" <*> expr <* keyword "in" <*> expr
-  <|> IfThenElse <$ keyword "if" <*> expr <* keyword "then" <*> expr <* keyword "else" <*> expr
+  <|> mkIfThenElse <$ keyword "if" <*> expr <* keyword "then" <*> expr <* keyword "else" <*> expr
   <|> List <$> between (symbol "[") (symbol "]") (sepBy expr (symbol ","))
   <|> Lit <$> lit
   <|> Var <$> name
   <|> Undefined <$ keyword "undefined"
   <|> parens expr
+
+mkIfThenElse :: Expr -> Expr -> Expr -> Expr
+mkIfThenElse c t e = Builtin IfThenElse [c, t, e]
 
 argsOf :: Parser a -> Parser [a]
 argsOf p = between (symbol "(") (symbol ")") (sepBy p (symbol ","))

@@ -16,10 +16,6 @@ eval e = do
 eval' :: Expr -> Eval Val
 eval' (Builtin b exprs)  = evalBuiltin b exprs
 eval' (Var x)            = look x
-eval' (IfThenElse c t e) = do
-  v <- eval c
-  b <- expectBool v
-  if b then eval t else eval e
 eval' Undefined          = crash
 eval' (Lit l)            = evalLit l
 eval' (List ls)          = do
@@ -168,6 +164,11 @@ evalBuiltin Or (e : es) = do
   case v of
     False -> evalBuiltin Or es
     True  -> pure (VBool True)
+evalBuiltin IfThenElse es = do
+  (c, t, e) <- expectArity3 es
+  v <- eval c
+  b <- expectBool v
+  if b then eval t else eval e
 evalBuiltin Fold es = do
   (e1, e2, e3) <- expectArity3 es
   vs <- (eval >=> expectList) e3

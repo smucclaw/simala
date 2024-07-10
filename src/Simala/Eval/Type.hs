@@ -48,52 +48,57 @@ class Render a where
   render :: a -> String
 
 instance Render Expr where
+  render :: Expr -> String
   render (Builtin b exprs) = render b <> renderArgs exprs
-  render (Var x) = Text.unpack x
-  render (IfThenElse e1 e2 e3) = "if " <> render e1 <> " then " <> render e2 <> " else " <> render e3
-  render (Lit l) = render l
-  render (Cons e1 e2) = "cons" <> renderArgs [e1, e2]
-  render (List es) = renderList es
-  render (Fun t args e) = "fun" <> renderTransparency t <> " " <> renderArgs args <> " => " <> render e
-  render (Let t x e1 e2) = "let" <> renderTransparency t <> " " <> render x <> " = " <> render e1 <> " in " <> render e2
-  render (App e es) = render e <> renderArgs es
-  render Undefined = "undefined"
+  render (Var x)           = Text.unpack x
+  render (Lit l)           = render l
+  render (Cons e1 e2)      = "cons" <> renderArgs [e1, e2]
+  render (List es)         = renderList es
+  render (Fun t args e)    = "fun" <> renderTransparency t <> " " <> renderArgs args <> " => " <> render e
+  render (Let t x e1 e2)   = "let" <> renderTransparency t <> " " <> render x <> " = " <> render e1 <> " in " <> render e2
+  render (App e es)        = render e <> renderArgs es
+  render Undefined         = "undefined"
 
 renderTransparency :: Transparency -> String
 renderTransparency Transparent = ""
 renderTransparency Opaque      = " opaque"
 
 instance Render Builtin where
-  render Minus = "minus"
-  render Divide = "divide"
-  render Modulo = "modulo"
-  render Sum = "sum"
-  render Product = "product"
-  render Maximum = "maximum"
-  render Minimum = "minimum"
-  render Not = "not"
-  render Lt = "lt"
-  render Le = "le"
-  render Gt = "gt"
-  render Ge = "ge"
-  render Eq = "eq"
-  render Ne = "ne"
-  render And = "and"
-  render Or = "ord"
-  render Fold = "fold"
+  render :: Builtin -> String
+  render Minus      = "minus"
+  render Divide     = "divide"
+  render Modulo     = "modulo"
+  render Sum        = "sum"
+  render Product    = "product"
+  render Maximum    = "maximum"
+  render Minimum    = "minimum"
+  render Not        = "not"
+  render Lt         = "lt"
+  render Le         = "le"
+  render Gt         = "gt"
+  render Ge         = "ge"
+  render Eq         = "eq"
+  render Ne         = "ne"
+  render And        = "and"
+  render Or         = "ord"
+  render IfThenElse = "ifthenelse"
+  render Fold       = "fold"
 
 instance Render Lit where
-  render (IntLit i) = show i
-  render (BoolLit True) = "true"
+  render :: Lit -> String
+  render (IntLit i)      = show i
+  render (BoolLit True)  = "true"
   render (BoolLit False) = "false"
 
 instance Render Val where
-  render (VInt i) = show i
-  render (VBool b) = show b
-  render (VList vs) = renderList vs
+  render :: Val -> String
+  render (VInt i)     = show i
+  render (VBool b)    = show b
+  render (VList vs)   = renderList vs
   render (VClosure _) = "<fun>"
 
 instance Render Name where
+  render :: Name -> String
   render x = Text.unpack x
 
 renderArgs :: Render a => [a] -> String
