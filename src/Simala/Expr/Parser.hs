@@ -42,10 +42,23 @@ identifier =
 
 name :: Parser Name
 name =
+  quotedName <|> simpleName
+
+simpleName :: Parser Name
+simpleName =
   lexeme $ try $ do
     x <- identifier
     guard (x `notElem` keywords)
     pure x
+
+quotedName :: Parser Name
+quotedName =
+  lexeme $ do
+    void (char '`')
+    x <- takeWhile1P (Just "text") (\ x -> isPrint x && not (x `elem` ("`" :: String)))
+    void (char '`')
+    pure x
+
 
 keywords :: Set Text
 keywords =
