@@ -1,0 +1,2 @@
+let r = { x = 2, y = 3 }
+in r.x + r.y
