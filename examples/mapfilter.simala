@@ -1,0 +1,25 @@
+let opaque id =
+
+    fun (x) => x in
+
+let opaque cons =
+
+    fun (x) => fun (xs) => x : xs in
+
+let opaque map =
+  
+    fun (f, xs) =>
+    foldr (fun (x, r) => f(x) : r, [], xs) in
+
+let opaque filter =
+
+    fun (p, xs) =>
+    foldr (fun (x, r) => (if p(x) then cons(x) else id)(r), [], xs) in
+
+  filter
+    ( fun (x) => x % 2 == 0,
+      map
+        ( fun (x) => x * 3,
+          [1,2,3,4,5,6,7,8,9,10]
+        )
+    )
