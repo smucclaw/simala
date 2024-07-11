@@ -1,8 +1,29 @@
 module Simala.Expr.Type where
 
 import Base
+import qualified Base.Map as Map
 
 type Name = Text
+
+-- | Currently only for use in the repl.
+--
+-- Mutually recursive operations are not directly possible right
+-- now and have to be simulated via records.
+--
+data Decl =
+    NonRec Transparency Name Expr
+  | Rec    Transparency Name Expr
+  deriving stock Show
+
+-- | Repl instructions.
+--
+data Instruction =
+    Declare Decl
+  | Eval Expr
+  | ToggleTrace
+  | Quit
+  | Noop
+  deriving stock Show
 
 data Expr =
     Builtin    Builtin [Expr]              -- built-ins; the currently decide their own eval strategy, so can be used for control flow
@@ -129,3 +150,19 @@ attachTransparency :: Transparency -> Val -> Val
 attachTransparency t (VClosure (MkClosure _ ns e env)) =
   VClosure (MkClosure t ns e env)
 attachTransparency _ v = v
+
+-- | An empty environment.
+emptyEnv :: Env
+emptyEnv = Map.empty
+
+-- | Second environment wins over first.
+extendEnv :: Env -> Env -> Env
+extendEnv = flip Map.union
+
+-- | An environment with a single binding.
+singletonEnv :: Name -> Val -> Env
+singletonEnv n v = Map.singleton n v
+
+-- | Look up a name in an environment.
+lookupInEnv :: Name -> Env -> Maybe Val
+lookupInEnv = Map.lookup

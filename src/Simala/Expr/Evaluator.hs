@@ -53,19 +53,27 @@ eval' (Fun t ns body)     = do
   env <- getEnv
   pure (VClosure (MkClosure t ns body env))
 eval' (Let t n e1 e2)     = do
-  v1 <- eval e1
-  let v1' = attachTransparency t v1
-  let env' = singletonEnv n v1'
+  env' <- evalDecl (NonRec t n e1)
   env <- getEnv
   withEnv (extendEnv env env') (eval e2)
 eval' (Letrec t n e1 e2)  = do
+  env'' <- evalDecl (Rec t n e1)
+  env <- getEnv
+  withEnv (extendEnv env env'') (eval e2)
+
+evalDecl :: Decl -> Eval Env
+evalDecl (NonRec t n e) = do
+  v <- eval e
+  let v' = attachTransparency t v
+  pure (singletonEnv n v')
+evalDecl (Rec t n e) = do
   let env' = singletonEnv n VBlackhole
   env <- getEnv
-  v1 <- withEnv (extendEnv env env') (eval e1)
-  MkClosure _ ns1 body1 env1 <- expectFunction v1
-  let env'' = singletonEnv n v1'
-      v1' = VClosure (MkClosure t ns1 body1 (extendEnv env1 env''))
-  withEnv (extendEnv env env'') (eval e2)
+  v <- withEnv (extendEnv env env') (eval e)
+  MkClosure _ ns body envc <- expectFunction v
+  let env'' = singletonEnv n v'
+      v' = VClosure (MkClosure t ns body (extendEnv envc env''))
+  pure env''
 
 evalClosure :: Closure -> [Expr] -> Eval Val
 evalClosure (MkClosure t argNames body env) args = do
@@ -93,9 +101,6 @@ bindVal ns0 vs0 = go Map.empty ns0 vs0
     go !acc (n : ns) (v : vs) = do
       go (Map.insert n v acc) ns vs
     go _    _        _        = arityError (length ns0) (length vs0)
-
-singletonEnv :: Name -> Val -> Env
-singletonEnv n v = Map.singleton n v
 
 evalLit :: Lit -> Eval Val
 evalLit (IntLit i)  = pure (VInt i)
@@ -239,12 +244,27 @@ evalBuiltin Case es = do
       c <- (eval >=> expectFunction) e2
       evalClosureVal c [v, VList vs]
 
-doEval :: Expr -> IO ()
-doEval e =
-  case runEval (eval e) of
+doEvalTracing :: Bool -> Env -> Expr -> IO ()
+doEvalTracing tracing env e =
+  case runEval (withEnv env (eval e)) of
     (r, t) -> do
-      putStr (renderEvalTrace t)
+      when tracing (putStr (renderEvalTrace t))
       case r of
         Left err -> print err
-        Right _ -> pure ()
+        Right x -> unless tracing (putStrLn (render x))
+
+doEvalDeclTracing :: Bool -> Env -> Decl -> IO (Env -> Env)
+doEvalDeclTracing tracing env d =
+  case runEval (withEnv env (evalDecl d)) of
+    (r, t) -> do
+      when tracing (putStr (renderEvalTrace t))
+      case r of
+        Left err -> do
+          print err
+          pure id
+        Right env' -> do
+          pure (\ x -> extendEnv x env')
+
+doEval :: Expr -> IO ()
+doEval = doEvalTracing True emptyEnv
 

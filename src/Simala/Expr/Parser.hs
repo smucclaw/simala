@@ -77,6 +77,7 @@ keywords =
     , "undefined"
     , "opaque"
     , "transparent"
+    , "rec"
     ]
 
 expr :: Parser Expr
@@ -207,9 +208,31 @@ builtins =
     , ("product", Product)
     ]
 
--- | Entry point for the expression parser.
-parseExpr :: String -> Text -> Either String Expr
-parseExpr f input =
-  case runParser (expr <* eof) f input of
+decl :: Parser Decl
+decl =
+      NonRec <$> transparency <*> name <* symbol "=" <*> expr
+  <|> Rec    <$  keyword "rec" <*> transparency <*> name <* symbol "=" <*> expr
+
+instruction :: Parser Instruction
+instruction =
+      Declare     <$> try decl
+  <|> Eval        <$> expr
+  <|> ToggleTrace <$  (symbol ":trace" <|> symbol ":t")
+  <|> Quit        <$  (symbol ":quit" <|> symbol ":q")
+  <|> Noop        <$  pure ()
+
+execParser :: Parser a -> String -> Text -> Either String a
+execParser p f input =
+  case runParser (spaces *> p <* eof) f input of
     Right e  -> Right e
     Left err -> Left (errorBundlePretty err)
+
+-- | Entry point for the expression parser.
+parseExpr :: String -> Text -> Either String Expr
+parseExpr =
+  execParser expr
+
+-- | Entry point for the repl parser.
+parseInstruction :: Text -> Either String Instruction
+parseInstruction =
+  execParser instruction "interactive"

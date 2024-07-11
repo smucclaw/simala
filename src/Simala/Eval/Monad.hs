@@ -1,7 +1,6 @@
 module Simala.Eval.Monad where
 
 import Base
-import qualified Base.Map as Map
 import Data.Bifunctor
 import Simala.Eval.Type
 import Simala.Expr.Type
@@ -55,10 +54,6 @@ simplifyEvalTrace t@(Trace e subs v) =
     Nothing -> Trace e (mapMaybe simplifyEvalTrace' subs) v
     Just t' -> t'
 
--- | Second environment wins over first.
-extendEnv :: Env -> Env -> Env
-extendEnv = flip Map.union
-
 arityError :: Int -> Int -> Eval a
 arityError ae ao = raise (ArityError ae ao)
 
@@ -97,7 +92,7 @@ withTransparency t' m = do
 look :: Name -> Eval Val -- fails if variable not in scope
 look n = do
   env <- getEnv
-  case Map.lookup n env of
+  case lookupInEnv n env of
     Nothing -> scopeError n
     Just v  -> pure v
 
@@ -178,9 +173,13 @@ withEnv env m = do
   assign #env savedEnv
   pure r
 
+initialEvalState :: EvalState
+initialEvalState =
+  MkEvalState emptyEnv emptyRevList Transparent
+
 runEval :: Eval a -> (Either EvalError a, EvalTrace)
 runEval (MkEval m) =
   second
     (simplifyEvalTrace . buildEvalTrace . unRevList . (.actions))
-    (m (MkEvalState Map.empty emptyRevList Transparent))
+    (m initialEvalState)
 

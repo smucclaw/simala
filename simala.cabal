@@ -27,6 +27,7 @@ library
   build-depends:
     base,
     containers,
+    haskeline,
     megaparsec,
     mtl,
     optics,
@@ -45,4 +46,5 @@ library
     Simala.Expr.Evaluator
     Simala.Expr.Type
     Simala.Expr.Parser
+    Simala.Repl
     Util.RevList
