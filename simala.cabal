@@ -3,9 +3,8 @@ name: simala
 version: 0.1
 build-type: Simple
 
-library
+common defaults
   default-language: GHC2021
-  hs-source-dirs: src
   ghc-options: -Wall
   default-extensions:
     DerivingStrategies
@@ -13,6 +12,18 @@ library
     OverloadedRecordDot
     OverloadedStrings
     OverloadedLabels
+
+executable simala
+  import: defaults
+  hs-source-dirs: app
+  build-depends:
+    base,
+    simala
+  main-is: Main.hs
+
+library
+  import: defaults
+  hs-source-dirs: src
   build-depends:
     base,
     containers,

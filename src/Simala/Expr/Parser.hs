@@ -155,3 +155,10 @@ builtins =
     , ("foldr", Foldr)
     , ("foldl", Foldl)
     ]
+
+-- | Entry point for the expression parser.
+parseExpr :: String -> Text -> Either String Expr
+parseExpr f input =
+  case runParser (expr <* eof) f input of
+    Right e  -> Right e
+    Left err -> Left (errorBundlePretty err)
