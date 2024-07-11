@@ -53,12 +53,15 @@ keywords =
     [ "false"
     , "true"
     , "let"
+    , "letrec"
     , "in"
     , "if"
     , "then"
     , "else"
     , "fun"
     , "undefined"
+    , "opaque"
+    , "transparent"
     ]
 
 expr :: Parser Expr
@@ -86,6 +89,10 @@ operatorTable =
     , binaryl "==" (builtin2 Eq)
     , binaryl "/=" (builtin2 Ne)
     ]
+  , [ binaryr "&&" (builtin2 And)
+    ]
+  , [ binaryr "||" (builtin2 Or)
+    ]
   , [ prefix (Fun Transparent <$ keyword "fun" <*> (argsOf name) <* symbol "=>")
     ]
   ]
@@ -109,13 +116,21 @@ builtin2 f e1 e2 = Builtin f [e1, e2]
 
 baseExpr :: Parser Expr
 baseExpr =
-      Let Transparent <$ keyword "let" <*> name <* symbol "=" <*> expr <* keyword "in" <*> expr
+      Let  <$ keyword "let" <*> transparency <*> name <* symbol "=" <*> expr <* keyword "in" <*> expr
+  <|> Letrec <$ keyword "letrec" <*> transparency <*> name <* symbol "=" <*> expr <* keyword "in" <*> expr
   <|> mkIfThenElse <$ keyword "if" <*> expr <* keyword "then" <*> expr <* keyword "else" <*> expr
   <|> List <$> between (symbol "[") (symbol "]") (sepBy expr (symbol ","))
   <|> Lit <$> lit
   <|> Var <$> name
   <|> Undefined <$ keyword "undefined"
   <|> parens expr
+
+transparency :: Parser Transparency
+transparency =
+  option Transparent
+    (   Transparent <$ keyword "transparent"
+    <|> Opaque      <$ keyword "opaque"
+    )
 
 mkIfThenElse :: Expr -> Expr -> Expr -> Expr
 mkIfThenElse c t e = Builtin IfThenElse [c, t, e]
@@ -154,6 +169,8 @@ builtins =
     , ("not", Not)
     , ("foldr", Foldr)
     , ("foldl", Foldl)
+    , ("sum", Sum)
+    , ("product", Product)
     ]
 
 -- | Entry point for the expression parser.

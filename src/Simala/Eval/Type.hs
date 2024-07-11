@@ -87,7 +87,7 @@ instance Render Builtin where
   render Eq         = "eq"
   render Ne         = "ne"
   render And        = "and"
-  render Or         = "ord"
+  render Or         = "or"
   render IfThenElse = "ifthenelse"
   render Foldr      = "foldr"
   render Foldl      = "foldl"
@@ -101,7 +101,8 @@ instance Render Lit where
 instance Render Val where
   render :: Val -> String
   render (VInt i)                          = show i
-  render (VBool b)                         = show b
+  render (VBool True)                      = "true"
+  render (VBool False)                     = "false"
   render (VList vs)                        = renderList vs
   render (VClosure (MkClosure t args _ _)) = "<fun" <> renderTransparency t <> "(" <> show (length args) <> ")>"
   render VBlackhole                        = "<blackhole>"
