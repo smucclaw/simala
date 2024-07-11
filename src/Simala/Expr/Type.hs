@@ -7,15 +7,20 @@ type Name = Text
 data Expr =
     Builtin    Builtin [Expr]              -- built-ins; the currently decide their own eval strategy, so can be used for control flow
   | Var        Name
+  | Atom       Name                        -- for simulating enumeration types
   | Lit        Lit
   | Cons       Expr Expr                   -- should be a built-in?
   | List       [Expr]                      -- construct a list
   | App        Expr [Expr]                 -- function application
+  | Record     (Row Expr)                  -- record construction
+  | Project    Expr Name                   -- record projection
   | Fun        Transparency [Name] Expr    -- anonymous function
   | Let        Transparency Name Expr Expr -- local declaration
   | Letrec     Transparency Name Expr Expr -- local recursive declaration
   | Undefined                              -- unclear
   deriving stock Show
+
+type Row a = [(Name, a)]
 
 data Transparency =
     Opaque
@@ -53,7 +58,9 @@ data Val =
     VInt  Int
   | VBool Bool
   | VList [Val]
+  | VRecord (Row Val)
   | VClosure Closure
+  | VAtom Name
   | VBlackhole
   deriving stock Show
 
@@ -61,7 +68,9 @@ data ValTy =
     TInt
   | TBool
   | TList
+  | TRecord
   | TFun
+  | TAtom
   | TBlackhole
   deriving stock Show
 
@@ -75,7 +84,9 @@ valTy :: Val -> ValTy
 valTy (VInt _)     = TInt
 valTy (VBool _)    = TBool
 valTy (VList _)    = TList
+valTy (VRecord _)  = TRecord
 valTy (VClosure _) = TFun
+valTy (VAtom _)    = TAtom
 valTy VBlackhole   = TBlackhole
 
 attachTransparency :: Transparency -> Val -> Val

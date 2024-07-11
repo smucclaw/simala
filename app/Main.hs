@@ -14,4 +14,4 @@ main = do
     e <- Text.readFile f
     case parseExpr f e of
       Right e' -> doEval e'
-      Left err -> print err
+      Left err -> putStr err

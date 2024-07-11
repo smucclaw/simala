@@ -36,6 +36,25 @@ buildEvalTrace = go []
           (Frame e' subs' : fs') -> go (Frame e' (pushRevList t subs') : fs') actions
     go _ _ = error "illegal eval action sequence"
 
+simplifyEvalTrace' :: EvalTrace -> Maybe EvalTrace
+simplifyEvalTrace' (Trace e subs v) =
+  let
+    subs' = mapMaybe simplifyEvalTrace' subs
+    t' = Trace e subs' v
+  in
+    case t' of
+      Trace (Lit _)    [] _ -> Nothing
+      Trace (List _)   [] _ -> Nothing
+      Trace (Record _) [] _ -> Nothing
+      Trace (Atom _)   [] _ -> Nothing
+      _                     -> Just t'
+
+simplifyEvalTrace :: EvalTrace -> EvalTrace
+simplifyEvalTrace t@(Trace e subs v) =
+  case simplifyEvalTrace' t of
+    Nothing -> Trace e (mapMaybe simplifyEvalTrace' subs) v
+    Just t' -> t'
+
 -- | Second environment wins over first.
 extendEnv :: Env -> Env -> Env
 extendEnv = flip Map.union
@@ -54,6 +73,9 @@ divByZero = raise DivByZero
 
 emptyListError :: Eval a
 emptyListError = raise EmptyListError
+
+recordProjectionError :: Name -> Eval a
+recordProjectionError n = raise (RecordProjectionError n)
 
 getTransparency :: Eval Transparency
 getTransparency = use #transparency
@@ -87,6 +109,10 @@ expectInt :: Val -> Eval Int -- fails if type-incorrect
 expectInt (VInt i) = pure i
 expectInt v        = typeError TInt (valTy v)
 
+expectAtom :: Val -> Eval Name -- fails if type-incorrect
+expectAtom (VAtom x) = pure x
+expectAtom v         = typeError TAtom (valTy v)
+
 expectFunction :: Val -> Eval Closure
 expectFunction (VClosure c) = pure c
 expectFunction v            = typeError TFun (valTy v)
@@ -94,6 +120,10 @@ expectFunction v            = typeError TFun (valTy v)
 expectList :: Val -> Eval [Val]
 expectList (VList vs) = pure vs
 expectList v          = typeError TList (valTy v)
+
+expectRecord :: Val -> Eval (Row Val)
+expectRecord (VRecord r) = pure r
+expectRecord v           = typeError TRecord (valTy v)
 
 expectArity3 :: [a] -> Eval (a, a, a) -- fails if wrong length
 expectArity3 [e1, e2, e3] = pure (e1, e2, e3)
@@ -151,6 +181,6 @@ withEnv env m = do
 runEval :: Eval a -> (Either EvalError a, EvalTrace)
 runEval (MkEval m) =
   second
-    (buildEvalTrace . unRevList . (.actions))
+    (simplifyEvalTrace . buildEvalTrace . unRevList . (.actions))
     (m (MkEvalState Map.empty emptyRevList Transparent))
 

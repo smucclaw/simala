@@ -25,6 +25,7 @@ evalWithTransparency t' e = do
 eval' :: Expr -> Eval Val
 eval' (Builtin b exprs)   = evalBuiltin b exprs
 eval' (Var x)             = look x
+eval' (Atom x)            = pure (VAtom x)
 eval' Undefined           = crash
 eval' (Lit l)             = evalLit l
 eval' (List ls)           = do
@@ -35,20 +36,29 @@ eval' (Cons e1 e2)        = do
   v2 <- eval e2
   vs <- expectList v2
   pure (VList (v1 : vs))
+eval' (Record r)          = do
+  vs <- traverse (\ (x, e) -> (x,) <$> eval e) r
+  pure (VRecord vs)
+eval' (Project e x)       = do
+  v <- eval e
+  r <- expectRecord v
+  case lookup x r of
+    Nothing -> recordProjectionError x
+    Just vx -> pure vx
 eval' (App f args)        = do
   v <- eval f
   c <- expectFunction v
   evalClosure c args
-eval' (Fun t ns body)    = do
+eval' (Fun t ns body)     = do
   env <- getEnv
   pure (VClosure (MkClosure t ns body env))
-eval' (Let t n e1 e2)    = do
+eval' (Let t n e1 e2)     = do
   v1 <- eval e1
   let v1' = attachTransparency t v1
   let env' = singletonEnv n v1'
   env <- getEnv
   withEnv (extendEnv env env') (evalWithTransparency t e2)
-eval' (Letrec t n e1 e2) = do
+eval' (Letrec t n e1 e2)  = do
   let env' = singletonEnv n VBlackhole
   env <- getEnv
   v1 <- withEnv (extendEnv env env') (eval e1)
@@ -110,8 +120,8 @@ expect2Bools exprs = do
   b2 <- (eval >=> expectBool) e2
   pure (b1, b2)
 
-expect2IntsOrBools :: [Expr] -> (Int -> Int -> Eval a) -> (Bool -> Bool -> Eval a) -> Eval a
-expect2IntsOrBools exprs ki kb = do
+expect2IntsOrBoolsOrAtoms :: [Expr] -> (Int -> Int -> Eval a) -> (Bool -> Bool -> Eval a) -> (Name -> Name -> Eval a) -> Eval a
+expect2IntsOrBoolsOrAtoms exprs ki kb ka = do
   (e1, e2) <- expectArity2 exprs
   v1 <- eval e1
   case v1 of
@@ -121,6 +131,9 @@ expect2IntsOrBools exprs ki kb = do
     VInt i1 -> do
       i2 <- (eval >=> expectInt) e2
       ki i1 i2
+    VAtom x1 -> do
+      x2 <- (eval >=> expectAtom) e2
+      ka x1 x2
     v -> typeError TInt (valTy v) -- TODO: Int or Bool expected
 
 evalBuiltin :: Builtin -> [Expr] -> Eval Val
@@ -165,13 +178,15 @@ evalBuiltin Ge exprs = do
   (i1, i2) <- expect2Ints exprs
   pure (VBool (i1 >= i2))
 evalBuiltin Eq exprs = do
-  expect2IntsOrBools exprs
+  expect2IntsOrBoolsOrAtoms exprs
     (\ i1 i2 -> pure (VBool (i1 == i2)))
     (\ b1 b2 -> pure (VBool (b1 == b2)))
+    (\ x1 x2 -> pure (VBool (x1 == x2)))
 evalBuiltin Ne exprs = do
-  expect2IntsOrBools exprs
+  expect2IntsOrBoolsOrAtoms exprs
     (\ i1 i2 -> pure (VBool (i1 /= i2)))
     (\ b1 b2 -> pure (VBool (b1 /= b2)))
+    (\ x1 x2 -> pure (VBool (x1 /= x2)))
 evalBuiltin And [] =
   pure (VBool True)
 evalBuiltin And (e : es) = do

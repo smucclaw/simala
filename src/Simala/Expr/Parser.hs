@@ -38,7 +38,7 @@ keyword k =
 
 identifier :: Parser Text
 identifier =
-  Text.cons <$> satisfy isAlpha <*> takeWhileP (Just "alphanum") isAlphaNum
+  Text.cons <$> satisfy isAlpha <*> takeWhileP (Just "alphanum or _") (\ x -> isAlphaNum x || x `elem` ("_" :: String))
 
 name :: Parser Name
 name =
@@ -72,7 +72,9 @@ expr =
 
 operatorTable :: [[Operator Parser Expr]]
 operatorTable =
-  [ [ postfix (flip mkApp <$> argsOf expr)
+  [ [ postfix (flip Project <$> (symbol "." *> name))
+    ]
+  , [ postfix (flip mkApp <$> argsOf expr)
     ]
   , [ binaryl "*" (builtin2 Product)
     , binaryl "/" (builtin2 Divide)
@@ -120,10 +122,18 @@ baseExpr =
   <|> Letrec <$ keyword "letrec" <*> transparency <*> name <* symbol "=" <*> expr <* keyword "in" <*> expr
   <|> mkIfThenElse <$ keyword "if" <*> expr <* keyword "then" <*> expr <* keyword "else" <*> expr
   <|> List <$> between (symbol "[") (symbol "]") (sepBy expr (symbol ","))
+  <|> Record <$> between (symbol "{") (symbol "}") (row (symbol "=") expr)
   <|> Lit <$> lit
   <|> Var <$> name
+  <|> Atom <$ symbol "'" <*> name
   <|> Undefined <$ keyword "undefined"
   <|> parens expr
+
+row :: Parser sep -> Parser a -> Parser (Row a)
+row sep payload =
+  sepBy item (symbol ",")
+  where
+    item = (,) <$> name <* sep <*> payload
 
 transparency :: Parser Transparency
 transparency =
