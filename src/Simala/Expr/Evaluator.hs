@@ -14,14 +14,6 @@ eval e = do
   when (t == Transparent) (exit v)
   pure v
 
-evalWithTransparency :: Transparency -> Expr -> Eval Val
-evalWithTransparency t' e = do
-  t <- getTransparency
-  when (t == Transparent) (enter e)
-  v <- withTransparency t' (eval' e) 
-  when (t == Transparent) (exit v)
-  pure v
-
 eval' :: Expr -> Eval Val
 eval' (Builtin b exprs)   = evalBuiltin b exprs
 eval' (Var x)             = look x
@@ -57,7 +49,7 @@ eval' (Let t n e1 e2)     = do
   let v1' = attachTransparency t v1
   let env' = singletonEnv n v1'
   env <- getEnv
-  withEnv (extendEnv env env') (evalWithTransparency t e2)
+  withEnv (extendEnv env env') (eval e2)
 eval' (Letrec t n e1 e2)  = do
   let env' = singletonEnv n VBlackhole
   env <- getEnv
