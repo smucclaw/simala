@@ -95,6 +95,7 @@ instance Render Builtin where
   render IfThenElse = "ifthenelse"
   render Foldr      = "foldr"
   render Foldl      = "foldl"
+  render Case       = "case"
 
 instance Render Lit where
   render :: Lit -> String

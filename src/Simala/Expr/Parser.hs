@@ -38,12 +38,13 @@ keyword k =
 
 identifier :: Parser Text
 identifier =
-  Text.cons <$> satisfy isAlpha <*> takeWhileP (Just "alphanum or _") (\ x -> isAlphaNum x || x `elem` ("_" :: String))
+  Text.cons <$> satisfy isAlpha <*> takeWhileP (Just "identifier char") (\ x -> isAlphaNum x || x `elem` ("_" :: String))
 
 name :: Parser Name
 name =
   quotedName <|> simpleName
 
+-- | A plain identifier.
 simpleName :: Parser Name
 simpleName =
   lexeme $ try $ do
@@ -51,11 +52,12 @@ simpleName =
     guard (x `notElem` keywords)
     pure x
 
+-- | A quoted identifier between backticks.
 quotedName :: Parser Name
 quotedName =
   lexeme $ do
     void (char '`')
-    x <- takeWhile1P (Just "text") (\ x -> isPrint x && not (x `elem` ("`" :: String)))
+    x <- takeWhile1P (Just "printable char except backticks") (\ x -> isPrint x && not (x `elem` ("`" :: String)))
     void (char '`')
     pure x
 
@@ -94,6 +96,7 @@ operatorTable =
     , binaryl "%" (builtin2 Modulo)
     ]
   , [ binaryl "+" (builtin2 Sum)
+    , binaryl "-" (builtin2 Minus)
     ]
   , [ binaryr ":" Cons
     ]
@@ -138,16 +141,23 @@ baseExpr =
   <|> Record <$> between (symbol "{") (symbol "}") (row (symbol "=") expr)
   <|> Lit <$> lit
   <|> Var <$> name
-  <|> Atom <$ symbol "'" <*> name
+  <|> Atom <$ char '\'' <*> name
   <|> Undefined <$ keyword "undefined"
   <|> parens expr
 
+-- | Parse a row of bindings. Parameterised over the
+-- parser separating names from payloads, and the payload
+-- parser.
+--
 row :: Parser sep -> Parser a -> Parser (Row a)
 row sep payload =
   sepBy item (symbol ",")
   where
     item = (,) <$> name <* sep <*> payload
 
+-- | Parse optional transparency. Missing transparency
+-- is assumed to be 'Transparnet'.
+--
 transparency :: Parser Transparency
 transparency =
   option Transparent
@@ -192,6 +202,7 @@ builtins =
     , ("not", Not)
     , ("foldr", Foldr)
     , ("foldl", Foldl)
+    , ("case", Case)
     , ("sum", Sum)
     , ("product", Product)
     ]

@@ -6,6 +6,9 @@ import Simala.Eval.Monad
 import Simala.Eval.Type
 import Simala.Expr.Type
 
+-- | Evaluate an expression. Produces a trace if
+-- the current transparency level warrants it.
+--
 eval :: Expr -> Eval Val
 eval e = do
   t <- getTransparency
@@ -14,6 +17,11 @@ eval e = do
   when (t == Transparent) (exit v)
   pure v
 
+-- | Evaluate an expression. Produces a trace
+-- only for recursive calls.
+--
+-- This is intended to be called only by 'eval'.
+--
 eval' :: Expr -> Eval Val
 eval' (Builtin b exprs)   = evalBuiltin b exprs
 eval' (Var x)             = look x
@@ -222,6 +230,14 @@ evalBuiltin Foldr es = do
       r <- go ws
       evalClosureVal c [w, r]
   go vs
+evalBuiltin Case es = do
+  (e1, e2, e3) <- expectArity3 es
+  v3 <- (eval >=> expectList) e3
+  case v3 of
+    [] -> eval e1
+    (v : vs) -> do
+      c <- (eval >=> expectFunction) e2
+      evalClosureVal c [v, VList vs]
 
 doEval :: Expr -> IO ()
 doEval e =

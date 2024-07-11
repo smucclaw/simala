@@ -1,0 +1,13 @@
+letrec take =
+
+  fun (n, xs) =>
+
+    if n <= 0
+      then []
+      else
+
+        case ([], fun (y, ys) => y : take (n - 1, ys), xs)
+
+in
+
+  take(3, [1,2,3,4,5,6,7,8,9,10])
