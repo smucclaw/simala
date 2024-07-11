@@ -10,16 +10,18 @@ import Util.RevList
 data EvalAction =
     Enter Expr
   | Exit Val
+  | Exception EvalError
   deriving stock Show
 
 data EvalTrace =
-  Trace Expr [EvalTrace] Val
+  Trace Expr [EvalTrace] (Either EvalError Val)
   deriving stock Show
 
 data EvalState =
   MkEvalState
-    { env     :: Env
-    , actions :: RevList EvalAction
+    { env          :: !Env
+    , actions      :: RevList EvalAction
+    , transparency :: !Transparency
     }
   deriving stock (Generic, Show)
 
@@ -28,10 +30,10 @@ data EvalFrame =
 
 type Eval :: Type -> Type
 newtype Eval a =
-  MkEval (EvalState -> Either EvalError (a, EvalState))
+  MkEval (EvalState -> (Either EvalError a, EvalState))
   deriving
     (Functor, Applicative, Monad, MonadState EvalState, MonadError EvalError)
-    via StateT EvalState (ExceptT EvalError Identity)
+    via ExceptT EvalError (StateT EvalState Identity)
 
 data EvalError =
     ArityError Int Int -- expected, observed
@@ -47,17 +49,22 @@ data EvalError =
 class Render a where
   render :: a -> String
 
+instance Render EvalError where
+  render :: EvalError -> String
+  render = show
+
 instance Render Expr where
   render :: Expr -> String
-  render (Builtin b exprs) = render b <> renderArgs exprs
-  render (Var x)           = Text.unpack x
-  render (Lit l)           = render l
-  render (Cons e1 e2)      = "cons" <> renderArgs [e1, e2]
-  render (List es)         = renderList es
-  render (Fun t args e)    = "fun" <> renderTransparency t <> " " <> renderArgs args <> " => " <> render e
-  render (Let t x e1 e2)   = "let" <> renderTransparency t <> " " <> render x <> " = " <> render e1 <> " in " <> render e2
-  render (App e es)        = render e <> renderArgs es
-  render Undefined         = "undefined"
+  render (Builtin b exprs)  = render b <> renderArgs exprs
+  render (Var x)            = Text.unpack x
+  render (Lit l)            = render l
+  render (Cons e1 e2)       = "cons" <> renderArgs [e1, e2]
+  render (List es)          = renderList es
+  render (Fun t args e)     = "fun" <> renderTransparency t <> " " <> renderArgs args <> " => " <> render e
+  render (Let t x e1 e2)    = "let" <> renderTransparency t <> " " <> render x <> " = " <> render e1 <> " in " <> render e2
+  render (Letrec t x e1 e2) = "letrec" <> renderTransparency t <> " " <> render x <> " = " <> render e1 <> " in " <> render e2
+  render (App e es)         = render e <> renderArgs es
+  render Undefined          = "undefined"
 
 renderTransparency :: Transparency -> String
 renderTransparency Transparent = ""
@@ -93,10 +100,11 @@ instance Render Lit where
 
 instance Render Val where
   render :: Val -> String
-  render (VInt i)     = show i
-  render (VBool b)    = show b
-  render (VList vs)   = renderList vs
-  render (VClosure _) = "<fun>"
+  render (VInt i)                          = show i
+  render (VBool b)                         = show b
+  render (VList vs)                        = renderList vs
+  render (VClosure (MkClosure t args _ _)) = "<fun" <> renderTransparency t <> "(" <> show (length args) <> ")>"
+  render VBlackhole                        = "<blackhole>"
 
 instance Render Name where
   render :: Name -> String

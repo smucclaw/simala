@@ -2,6 +2,7 @@ module Simala.Eval.Monad where
 
 import Base
 import qualified Base.Map as Map
+import Data.Bifunctor
 import Simala.Eval.Type
 import Simala.Expr.Type
 import Util.RevList
@@ -9,8 +10,10 @@ import Util.RevList
 renderEvalTrace :: EvalTrace -> String
 renderEvalTrace = go 1
   where
-    go lvl (Trace e subs v) = line lvl '>' (render e) <> concatMap (go (lvl + 1)) subs <> line lvl '<' (render v)
+    go lvl (Trace e subs v) = line lvl '>' (render e) <> concatMap (go (lvl + 1)) subs <> renderResult lvl v -- line lvl '<' (render v)
     line lvl c msg = replicate (lvl * 3) c <> " " <> msg <> "\n"
+    renderResult lvl (Right x) = line lvl '<' (render x)
+    renderResult lvl (Left x)  = line lvl '*' (render x)
 
 buildEvalTrace :: [EvalAction] -> EvalTrace
 buildEvalTrace = go []
@@ -19,11 +22,18 @@ buildEvalTrace = go []
     go fs                  (Enter e : actions) = go (Frame e emptyRevList : fs) actions
     go (Frame e subs : fs) (Exit v  : actions) =
       let
-        t = Trace e (unRevList subs) v
+        t = Trace e (unRevList subs) (Right v)
       in
         case fs of
           []                     -> t -- TODO: strictly speaking, we should check if actions is empty
-          (Frame e' subs' : fs') -> go (Frame e' (pushRevList t  subs') : fs') actions
+          (Frame e' subs' : fs') -> go (Frame e' (pushRevList t subs') : fs') actions
+    go (Frame e subs : fs) actions@(Exception exc : _) =
+      let
+        t = Trace e (unRevList subs) (Left exc)
+      in
+        case fs of
+          []                     -> t
+          (Frame e' subs' : fs') -> go (Frame e' (pushRevList t subs') : fs') actions
     go _ _ = error "illegal eval action sequence"
 
 -- | Second environment wins over first.
@@ -31,19 +41,36 @@ extendEnv :: Env -> Env -> Env
 extendEnv = flip Map.union
 
 arityError :: Int -> Int -> Eval a
-arityError ae ao = throwError (ArityError ae ao)
+arityError ae ao = raise (ArityError ae ao)
 
 typeError :: ValTy -> ValTy -> Eval a
-typeError tye tyo = throwError (TypeError tye tyo)
+typeError tye tyo = raise (TypeError tye tyo)
 
 scopeError :: Name -> Eval a
-scopeError n = throwError (ScopeError n)
+scopeError n = raise (ScopeError n)
 
 divByZero :: Eval a
-divByZero = throwError DivByZero
+divByZero = raise DivByZero
 
 emptyListError :: Eval a
-emptyListError = throwError EmptyListError
+emptyListError = raise EmptyListError
+
+getTransparency :: Eval Transparency
+getTransparency = use #transparency
+
+-- | Should not be used directly; use 'withTransparency'.
+setTransparency :: Transparency -> Eval ()
+setTransparency t = assign' #transparency t
+
+-- | We can currently only lower the transparency.
+withTransparency :: Transparency -> Eval a -> Eval a
+withTransparency t' m = do
+  t <- getTransparency
+  let t'' = min t t'
+  setTransparency t''
+  x <- m
+  setTransparency t
+  pure x
 
 look :: Name -> Eval Val -- fails if variable not in scope
 look n = do
@@ -92,8 +119,13 @@ expectEmpty :: [Expr] -> Eval () -- fails if not empty
 expectEmpty [] = pure ()
 expectEmpty es = arityError 0 (length es)
 
+raise :: EvalError -> Eval a
+raise e = do
+  pushEvalAction (Exception e)
+  throwError e
+
 crash :: Eval a -- abort program evaluation
-crash = throwError Crash
+crash = raise Crash
 
 pushEvalAction :: EvalAction -> Eval ()
 pushEvalAction action =
@@ -116,7 +148,9 @@ withEnv env m = do
   assign #env savedEnv
   pure r
 
-runEval :: Eval a -> Either EvalError EvalTrace
+runEval :: Eval a -> (Either EvalError a, EvalTrace)
 runEval (MkEval m) =
-  buildEvalTrace . unRevList . (.actions) . snd <$> m (MkEvalState Map.empty emptyRevList)
+  second
+    (buildEvalTrace . unRevList . (.actions))
+    (m (MkEvalState Map.empty emptyRevList Transparent))
 

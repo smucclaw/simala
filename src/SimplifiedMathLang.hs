@@ -45,6 +45,14 @@ incListExample :: Expr
 incListExample =
   Let Opaque "map" mapExample (App (Var "map") [Fun Transparent ["x"] (Builtin Sum [Var "x", Lit (IntLit 1)]), List [Lit (IntLit 1), Lit (IntLit 2), Lit (IntLit 3)]])
 
+rangeBody :: Expr
+rangeBody =
+  Fun Transparent ["lo", "hi"] (Builtin IfThenElse [Builtin Gt [Var "lo", Var "hi"], List [], Cons (Var "lo") (App (Var "range") [Builtin Sum [Var "lo", Lit (IntLit 1)], Var "hi"])])
+
+rangeExample' :: Expr
+rangeExample' =
+  Letrec Opaque "range" rangeBody (App (Var "range") [Lit (IntLit 3), Lit (IntLit 10)])
+
 parseExpr :: Text -> IO ()
 parseExpr e = parseTest (expr <* eof) e
 

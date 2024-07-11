@@ -13,13 +13,14 @@ data Expr =
   | App        Expr [Expr]                 -- function application
   | Fun        Transparency [Name] Expr    -- anonymous function
   | Let        Transparency Name Expr Expr -- local declaration
+  | Letrec     Transparency Name Expr Expr -- local recursive declaration
   | Undefined                              -- unclear
   deriving stock Show
 
 data Transparency =
-    Transparent
-  | Opaque
-  deriving stock Show
+    Opaque
+  | Transparent
+  deriving stock (Eq, Ord, Show)
 
 data Lit =
     IntLit     Int
@@ -53,6 +54,7 @@ data Val =
   | VBool Bool
   | VList [Val]
   | VClosure Closure
+  | VBlackhole
   deriving stock Show
 
 data ValTy =
@@ -60,10 +62,11 @@ data ValTy =
   | TBool
   | TList
   | TFun
+  | TBlackhole
   deriving stock Show
 
 data Closure =
-  MkClosure [Name] Expr Env
+  MkClosure Transparency [Name] Expr Env
   deriving stock Show
 
 type Env = Map Name Val
@@ -73,4 +76,9 @@ valTy (VInt _)     = TInt
 valTy (VBool _)    = TBool
 valTy (VList _)    = TList
 valTy (VClosure _) = TFun
+valTy VBlackhole   = TBlackhole
 
+attachTransparency :: Transparency -> Val -> Val
+attachTransparency t (VClosure (MkClosure _ ns e env)) =
+  VClosure (MkClosure t ns e env)
+attachTransparency _ v = v

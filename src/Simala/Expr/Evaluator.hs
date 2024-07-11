@@ -8,45 +8,64 @@ import Simala.Expr.Type
 
 eval :: Expr -> Eval Val
 eval e = do
-  enter e
+  t <- getTransparency
+  when (t == Transparent) (enter e)
   v <- eval' e
-  exit v
+  when (t == Transparent) (exit v)
+  pure v
+
+evalWithTransparency :: Transparency -> Expr -> Eval Val
+evalWithTransparency t' e = do
+  t <- getTransparency
+  when (t == Transparent) (enter e)
+  v <- withTransparency t' (eval' e) 
+  when (t == Transparent) (exit v)
   pure v
 
 eval' :: Expr -> Eval Val
-eval' (Builtin b exprs)  = evalBuiltin b exprs
-eval' (Var x)            = look x
-eval' Undefined          = crash
-eval' (Lit l)            = evalLit l
-eval' (List ls)          = do
+eval' (Builtin b exprs)   = evalBuiltin b exprs
+eval' (Var x)             = look x
+eval' Undefined           = crash
+eval' (Lit l)             = evalLit l
+eval' (List ls)           = do
   vs <- traverse eval ls
   pure (VList vs)
-eval' (Cons e1 e2)       = do
+eval' (Cons e1 e2)        = do
   v1 <- eval e1
   v2 <- eval e2
   vs <- expectList v2
   pure (VList (v1 : vs))
-eval' (App f args)       = do
+eval' (App f args)        = do
   v <- eval f
   c <- expectFunction v
   evalClosure c args
-eval' (Fun _t ns body)   = do
+eval' (Fun t ns body)    = do
   env <- getEnv
-  pure (VClosure (MkClosure ns body env))
-eval' (Let _t n e1 e2)   = do
-  env' <- bind [n] [e1]
+  pure (VClosure (MkClosure t ns body env))
+eval' (Let t n e1 e2)    = do
+  v1 <- eval e1
+  let v1' = attachTransparency t v1
+  let env' = singletonEnv n v1'
   env <- getEnv
-  withEnv (extendEnv env env') (eval e2)
+  withEnv (extendEnv env env') (evalWithTransparency t e2)
+eval' (Letrec t n e1 e2) = do
+  let env' = singletonEnv n VBlackhole
+  env <- getEnv
+  v1 <- withEnv (extendEnv env env') (eval e1)
+  MkClosure _ ns1 body1 env1 <- expectFunction v1
+  let env'' = singletonEnv n v1'
+      v1' = VClosure (MkClosure t ns1 body1 (extendEnv env1 env''))
+  withEnv (extendEnv env env'') (eval e2)
 
 evalClosure :: Closure -> [Expr] -> Eval Val
-evalClosure (MkClosure argNames body env) args = do
+evalClosure (MkClosure t argNames body env) args = do
   env' <- bind argNames args
-  withEnv (extendEnv env env') (eval body)
+  withEnv (extendEnv env env') (withTransparency t (eval body))
 
 evalClosureVal :: Closure -> [Val] -> Eval Val
-evalClosureVal (MkClosure argNames body env) args = do
+evalClosureVal (MkClosure t argNames body env) args = do
   env' <- bindVal argNames args
-  withEnv (extendEnv env env') (eval body)
+  withEnv (extendEnv env env') (withTransparency t (eval body))
 
 bind :: [Name] -> [Expr] -> Eval Env
 bind ns0 es0 = go Map.empty ns0 es0
@@ -64,6 +83,9 @@ bindVal ns0 vs0 = go Map.empty ns0 vs0
     go !acc (n : ns) (v : vs) = do
       go (Map.insert n v acc) ns vs
     go _    _        _        = arityError (length ns0) (length vs0)
+
+singletonEnv :: Name -> Val -> Env
+singletonEnv n v = Map.singleton n v
 
 evalLit :: Lit -> Eval Val
 evalLit (IntLit i)  = pure (VInt i)
@@ -197,6 +219,9 @@ evalBuiltin Foldr es = do
 doEval :: Expr -> IO ()
 doEval e =
   case runEval (eval e) of
-    Left err -> print err
-    Right t -> putStr (renderEvalTrace t)
+    (r, t) -> do
+      putStr (renderEvalTrace t)
+      case r of
+        Left err -> print err
+        Right _ -> pure ()
 
