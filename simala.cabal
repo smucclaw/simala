@@ -45,7 +45,8 @@ library
     Simala.Eval.Monad
     Simala.Eval.Type
     Simala.Expr.Evaluator
-    Simala.Expr.Type
     Simala.Expr.Parser
+    Simala.Expr.Render
+    Simala.Expr.Type
     Simala.Repl
     Util.RevList

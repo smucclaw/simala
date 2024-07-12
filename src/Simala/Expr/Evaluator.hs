@@ -4,6 +4,7 @@ import Base
 import qualified Base.Map as Map
 import Simala.Eval.Monad
 import Simala.Eval.Type
+import Simala.Expr.Render
 import Simala.Expr.Type
 
 -- | Evaluate an expression. Produces a trace if

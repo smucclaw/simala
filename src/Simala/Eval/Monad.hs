@@ -3,6 +3,7 @@ module Simala.Eval.Monad where
 import Base
 import Data.Bifunctor
 import Simala.Eval.Type
+import Simala.Expr.Render
 import Simala.Expr.Type
 import Util.RevList
 
