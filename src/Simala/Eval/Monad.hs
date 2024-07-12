@@ -1,19 +1,21 @@
 module Simala.Eval.Monad where
 
 import Base
-import Data.Bifunctor
+import qualified Base.Text as Text
 import Simala.Eval.Type
 import Simala.Expr.Render
 import Simala.Expr.Type
 import Util.RevList
 
-renderEvalTrace :: EvalTrace -> String
+import Data.Bifunctor
+
+renderEvalTrace :: EvalTrace -> Text
 renderEvalTrace = go 1
   where
-    go lvl (Trace e subs v) = line lvl '>' (render e) <> concatMap (go (lvl + 1)) subs <> renderResult lvl v -- line lvl '<' (render v)
-    line lvl c msg = replicate (lvl * 3) c <> " " <> msg <> "\n"
-    renderResult lvl (Right x) = line lvl '<' (render x)
-    renderResult lvl (Left x)  = line lvl '*' (render x)
+    go lvl (Trace e subs v) = line lvl ">" (render e) <> Text.concat (map (go (lvl + 1)) subs) <> renderResult lvl v -- line lvl '<' (render v)
+    line lvl c msg = Text.replicate (lvl * 3) c <> " " <> msg <> "\n"
+    renderResult lvl (Right x) = line lvl "<" (render x)
+    renderResult lvl (Left x)  = line lvl "*" (render x)
 
 buildEvalTrace :: [EvalAction] -> EvalTrace
 buildEvalTrace = go []

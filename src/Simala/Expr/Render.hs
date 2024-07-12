@@ -8,48 +8,72 @@ import Simala.Expr.Type
 import Simala.Eval.Type
 import Text.Megaparsec (eof, parseMaybe)
 
+-- | Types that have a human-readable pretty-printed / rendered representation.
 class Render a where
-  renderAtPrio :: Int -> a -> String
+  -- | Produce a string rendering of an input given the priority level of the
+  -- context. The higher the priority level of the context, the more likely it
+  -- is that parentheses will be needed.
+  --
+  renderAtPrio :: Int -> a -> Text
   renderAtPrio _ = render
-  render :: a -> String
+
+  -- | Produce a string rendering of an input in a completely flexible context.
+  -- Should never generate parentheses on the outside of the rendering except
+  -- if they're a fixed part of the syntax.
+  --
+  render :: a -> Text
   render = renderAtPrio 0
 
   {-# MINIMAL renderAtPrio | render #-}
 
 instance Render EvalError where
-  render :: EvalError -> String
-  render = show
+  render :: EvalError -> Text
+  render = Text.pack . show
 
 instance Render Expr where
-  renderAtPrio :: Int -> Expr -> String
+  renderAtPrio :: Int -> Expr -> Text
   renderAtPrio p (Builtin b es)     = renderBuiltin p b es
-  renderAtPrio _ (Var x)            = renderName x
-  renderAtPrio _ (Atom x)           = "'" <> renderName x
+  renderAtPrio _ (Var x)            = render x
+  renderAtPrio _ (Atom x)           = "'" <> render x
   renderAtPrio _ (Lit l)            = render l
   renderAtPrio p (Cons e1 e2)       = renderBinopr 5 " : " p e1 e2
   renderAtPrio _ (List es)          = renderList es
-  renderAtPrio _ (Record r)         = renderRow " = " render r
-  renderAtPrio p (Project e n)      = parensIf (p > 9) (renderAtPrio 9 e <> "." <> renderName n)
+  renderAtPrio _ (Record r)         = renderRow " = " r
+  renderAtPrio p (Project e n)      = parensIf (p > 9) (renderAtPrio 9 e <> "." <> render n)
   renderAtPrio p (Fun t args e)     = parensIf (p > 0) ("fun" <> renderTransparency t <> " " <> renderArgs args <> " => " <> render e)
-  renderAtPrio p (Let t x e1 e2)    = parensIf (p > 0) ("let" <> renderTransparency t <> " " <> renderName x <> " = " <> render e1 <> " in " <> render e2)
-  renderAtPrio p (Letrec t x e1 e2) = parensIf (p > 0) ("letrec" <> renderTransparency t <> " " <> renderName x <> " = " <> render e1 <> " in " <> render e2)
+  renderAtPrio p (Let t x e1 e2)    = parensIf (p > 0) ("let" <> renderTransparency t <> " " <> render x <> " = " <> render e1 <> " in " <> render e2)
+  renderAtPrio p (Letrec t x e1 e2) = parensIf (p > 0) ("letrec" <> renderTransparency t <> " " <> render x <> " = " <> render e1 <> " in " <> render e2)
   renderAtPrio p (App e es)         = parensIf (p > 9) (renderAtPrio 9 e <> renderArgs es)
   renderAtPrio _ Undefined          = "undefined"
 
-renderName :: Name -> String
+-- | Render a name. This will use quotes if and only if they're needed for the
+-- name.
+--
+-- NOTE: Not all names are legal at all, there are still restrictions even on
+-- quoted names. So if a name has been generated not by parsing but by creating
+-- the AST directly, there's no guarantee that the rendering will be a legal
+-- input again.
+--
+renderName :: Name -> Text
 renderName n
-  | needsQuoting n = "`" <> Text.unpack n <> "`"
-  | otherwise      = Text.unpack n
+  | needsQuoting n = "`" <> n <> "`"
+  | otherwise      = n
 
+-- | For safety, we use the actual parser for "simple" names to decide whether
+-- a name needs quoting when rendered.
+--
 needsQuoting :: Name -> Bool
 needsQuoting n =
   isNothing (parseMaybe (simpleName <* eof) n)
 
-renderTransparency :: Transparency -> String
+-- | As 'Transparent' is the default transparency, we only render 'Opaque'
+-- transparency annotations.
+--
+renderTransparency :: Transparency -> Text
 renderTransparency Transparent = ""
 renderTransparency Opaque      = " opaque"
 
-renderBuiltin :: Int -> Builtin -> [Expr] -> String
+renderBuiltin :: Int -> Builtin -> [Expr] -> Text
 renderBuiltin p Minus      [e1, e2]     = renderBinopl 6 " - "  p e1 e2
 renderBuiltin p Sum        [e1, e2]     = renderBinopl 6 " + "  p e1 e2
 renderBuiltin p Product    [e1, e2]     = renderBinopl 7 " * "  p e1 e2
@@ -67,21 +91,21 @@ renderBuiltin p IfThenElse [e1, e2, e3] =
   parensIf (p > 0) ("if " <> render e1 <> " then " <> render e2 <> " else " <> render e3)
 renderBuiltin _ b          es           = render b <> renderArgs es
 
-renderBinopl :: (Render a1, Render a2) => Int -> String -> Int -> a1 -> a2 -> String
+renderBinopl :: (Render a1, Render a2) => Int -> Text -> Int -> a1 -> a2 -> Text
 renderBinopl t txt p e1 e2 = parensIf (p > t) (renderAtPrio t e1 <> txt <> renderAtPrio (t + 1) e2)
 
-renderBinopr :: (Render a1, Render a2) => Int -> String -> Int -> a1 -> a2 -> String
+renderBinopr :: (Render a1, Render a2) => Int -> Text -> Int -> a1 -> a2 -> Text
 renderBinopr t txt p e1 e2 = parensIf (p > t) (renderAtPrio (t + 1) e1 <> txt <> renderAtPrio t e2)
 
-renderBinop :: (Render a1, Render a2) => Int -> String -> Int -> a1 -> a2 -> String
+renderBinop :: (Render a1, Render a2) => Int -> Text -> Int -> a1 -> a2 -> Text
 renderBinop t txt p e1 e2 = parensIf (p > t) (renderAtPrio (t + 1) e1 <> txt <> renderAtPrio (t + 1) e2)
 
-parensIf :: Bool -> String -> String
+parensIf :: Bool -> Text -> Text
 parensIf True  x = "(" <> x <> ")"
 parensIf False x = x
 
 instance Render Builtin where
-  render :: Builtin -> String
+  render :: Builtin -> Text
   render Minus      = "minus"
   render Divide     = "divide"
   render Modulo     = "modulo"
@@ -104,37 +128,40 @@ instance Render Builtin where
   render Case       = "case"
 
 instance Render Lit where
-  render :: Lit -> String
-  render (IntLit i)      = show i
+  render :: Lit -> Text
+  render (IntLit i)      = Text.pack (show i)
   render (BoolLit True)  = "true"
   render (BoolLit False) = "false"
 
 instance Render Val where
-  render :: Val -> String
-  render (VInt i)                          = show i
+  render :: Val -> Text
+  render (VInt i)                          = Text.pack (show i)
   render (VBool True)                      = "true"
   render (VBool False)                     = "false"
   render (VList vs)                        = renderList vs
-  render (VRecord r)                       = renderRow " = " render r
-  render (VClosure (MkClosure t args _ _)) = "<fun" <> renderTransparency t <> "(" <> show (length args) <> ")>"
-  render (VAtom x)                         = "'" <> Text.unpack x
+  render (VRecord r)                       = renderRow " = " r
+  render (VClosure (MkClosure t args _ _)) = "<fun" <> renderTransparency t <> "/" <> Text.pack (show (length args)) <> ">"
+  render (VAtom x)                         = "'" <> x
   render VBlackhole                        = "<blackhole>"
 
 instance Render Name where
-  render :: Name -> String
-  render x = Text.unpack x
+  render :: Name -> Text
+  render = renderName
 
-renderArgs :: Render a => [a] -> String
-renderArgs xs = "(" <> intercalate "," (map render xs) <> ")"
+-- | Helper function to render an argument / parameter list.
+renderArgs :: Render a => [a] -> Text
+renderArgs xs = "(" <> Text.intercalate "," (map render xs) <> ")"
 
-renderList :: Render a => [a] -> String
-renderList xs = "[" <> intercalate "," (map render xs) <> "]"
+-- | Helper function to render a literal list.
+renderList :: Render a => [a] -> Text
+renderList xs = "[" <> Text.intercalate "," (map render xs) <> "]"
 
-renderRow :: forall a. String -> (a -> String) -> Row a -> String
-renderRow sep payload xs =
-  "{" <> intercalate "," (map item xs) <> "}"
+-- | Helper function to render a row. Takes as argument the
+-- string that separates names from payloads.
+--
+renderRow :: forall a. Render a => Text -> Row a -> Text
+renderRow sep xs =
+  "{" <> Text.intercalate "," (map item xs) <> "}"
   where
-    item :: (Name, a) -> String
-    item (x, a) = Text.unpack x <> sep <> payload a
-
-
+    item :: (Name, a) -> Text
+    item (x, a) = render x <> sep <> render a

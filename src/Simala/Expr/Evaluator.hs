@@ -2,6 +2,7 @@ module Simala.Expr.Evaluator where
 
 import Base
 import qualified Base.Map as Map
+import qualified Base.Text as Text
 import Simala.Eval.Monad
 import Simala.Eval.Type
 import Simala.Expr.Render
@@ -249,16 +250,16 @@ doEvalTracing :: Bool -> Env -> Expr -> IO ()
 doEvalTracing tracing env e =
   case runEval (withEnv env (eval e)) of
     (r, t) -> do
-      when tracing (putStr (renderEvalTrace t))
+      when tracing (Text.putStr (renderEvalTrace t))
       case r of
         Left err -> print err
-        Right x -> unless tracing (putStrLn (render x))
+        Right x -> unless tracing (Text.putStrLn (render x))
 
 doEvalDeclTracing :: Bool -> Env -> Decl -> IO (Env -> Env)
 doEvalDeclTracing tracing env d =
   case runEval (withEnv env (evalDecl d)) of
     (r, t) -> do
-      when tracing (putStr (renderEvalTrace t))
+      when tracing (Text.putStr (renderEvalTrace t))
       case r of
         Left err -> do
           print err
