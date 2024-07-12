@@ -31,10 +31,11 @@ symbol =
 
 keyword :: Text -> Parser Text
 keyword k =
-  lexeme $ try $ do
+  (lexeme $ try $ do
     x <- identifier
     guard (x == k)
     pure x
+  ) <?> show (Text.unpack k)
 
 identifier :: Parser Text
 identifier =
@@ -42,7 +43,7 @@ identifier =
 
 name :: Parser Name
 name =
-  quotedName <|> simpleName
+  (quotedName <|> simpleName) <?> "identifier"
 
 -- | A plain identifier.
 simpleName :: Parser Name
@@ -88,19 +89,24 @@ expr =
 
 operatorTable :: [[Operator Parser Expr]]
 operatorTable =
-  [ [ postfix (flip Project <$> (symbol "." *> name))
+  [ [ postfix -- we allow mixed chains of function applications and record projections
+        (   flip Project <$> (symbol "." *> name)
+        <|> flip mkApp <$> argsOf expr
+        )
     ]
-  , [ postfix (flip mkApp <$> argsOf expr)
-    ]
+    -- 7
   , [ binaryl "*" (builtin2 Product)
     , binaryl "/" (builtin2 Divide)
     , binaryl "%" (builtin2 Modulo)
     ]
+    -- 6
   , [ binaryl "+" (builtin2 Sum)
     , binaryl "-" (builtin2 Minus)
     ]
+    -- 5
   , [ binaryr ":" Cons
     ]
+    -- 4
   , [ binaryl ">=" (builtin2 Ge)
     , binaryl "<=" (builtin2 Le)
     , binaryl ">" (builtin2 Gt)
@@ -108,12 +114,14 @@ operatorTable =
     , binaryl "==" (builtin2 Eq)
     , binaryl "/=" (builtin2 Ne)
     ]
+    -- 3
   , [ binaryr "&&" (builtin2 And)
     ]
+    -- 2
   , [ binaryr "||" (builtin2 Or)
     ]
-  , [ prefix (Fun Transparent <$ keyword "fun" <*> (argsOf name) <* symbol "=>")
-    ]
+  -- , [ prefix (Fun Transparent <$ keyword "fun" <*> (argsOf name) <* symbol "=>")
+  --   ]
   ]
 
 prefix :: Parser (Expr -> Expr) -> Operator Parser Expr
@@ -137,6 +145,7 @@ baseExpr :: Parser Expr
 baseExpr =
       Let  <$ keyword "let" <*> transparency <*> name <* symbol "=" <*> expr <* keyword "in" <*> expr
   <|> Letrec <$ keyword "letrec" <*> transparency <*> name <* symbol "=" <*> expr <* keyword "in" <*> expr
+  <|> Fun <$ keyword "fun" <*> transparency <*> argsOf name <* symbol "=>" <*> expr
   <|> mkIfThenElse <$ keyword "if" <*> expr <* keyword "then" <*> expr <* keyword "else" <*> expr
   <|> List <$> between (symbol "[") (symbol "]") (sepBy expr (symbol ","))
   <|> Record <$> between (symbol "{") (symbol "}") (row (symbol "=") expr)

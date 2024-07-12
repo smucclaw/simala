@@ -3,35 +3,82 @@ module Simala.Expr.Render where
 import Base
 import qualified Base.Text as Text
 
+import Simala.Expr.Parser (simpleName)
 import Simala.Expr.Type
 import Simala.Eval.Type
+import Text.Megaparsec (eof, parseMaybe)
 
 class Render a where
+  renderAtPrio :: Int -> a -> String
+  renderAtPrio _ = render
   render :: a -> String
+  render = renderAtPrio 0
+
+  {-# MINIMAL renderAtPrio | render #-}
 
 instance Render EvalError where
   render :: EvalError -> String
   render = show
 
 instance Render Expr where
-  render :: Expr -> String
-  render (Builtin b exprs)  = render b <> renderArgs exprs
-  render (Var x)            = Text.unpack x
-  render (Atom x)           = "'" <> Text.unpack x
-  render (Lit l)            = render l
-  render (Cons e1 e2)       = "cons" <> renderArgs [e1, e2]
-  render (List es)          = renderList es
-  render (Record r)         = renderRow " = " render r
-  render (Project r n)      = render r <> "." <> Text.unpack n
-  render (Fun t args e)     = "fun" <> renderTransparency t <> " " <> renderArgs args <> " => " <> render e
-  render (Let t x e1 e2)    = "let" <> renderTransparency t <> " " <> render x <> " = " <> render e1 <> " in " <> render e2
-  render (Letrec t x e1 e2) = "letrec" <> renderTransparency t <> " " <> render x <> " = " <> render e1 <> " in " <> render e2
-  render (App e es)         = render e <> renderArgs es
-  render Undefined          = "undefined"
+  renderAtPrio :: Int -> Expr -> String
+  renderAtPrio p (Builtin b es)     = renderBuiltin p b es
+  renderAtPrio _ (Var x)            = renderName x
+  renderAtPrio _ (Atom x)           = "'" <> renderName x
+  renderAtPrio _ (Lit l)            = render l
+  renderAtPrio p (Cons e1 e2)       = renderBinopr 5 " : " p e1 e2
+  renderAtPrio _ (List es)          = renderList es
+  renderAtPrio _ (Record r)         = renderRow " = " render r
+  renderAtPrio p (Project e n)      = parensIf (p > 9) (renderAtPrio 9 e <> "." <> renderName n)
+  renderAtPrio p (Fun t args e)     = parensIf (p > 0) ("fun" <> renderTransparency t <> " " <> renderArgs args <> " => " <> render e)
+  renderAtPrio p (Let t x e1 e2)    = parensIf (p > 0) ("let" <> renderTransparency t <> " " <> renderName x <> " = " <> render e1 <> " in " <> render e2)
+  renderAtPrio p (Letrec t x e1 e2) = parensIf (p > 0) ("letrec" <> renderTransparency t <> " " <> renderName x <> " = " <> render e1 <> " in " <> render e2)
+  renderAtPrio p (App e es)         = parensIf (p > 9) (renderAtPrio 9 e <> renderArgs es)
+  renderAtPrio _ Undefined          = "undefined"
+
+renderName :: Name -> String
+renderName n
+  | needsQuoting n = "`" <> Text.unpack n <> "`"
+  | otherwise      = Text.unpack n
+
+needsQuoting :: Name -> Bool
+needsQuoting n =
+  isNothing (parseMaybe (simpleName <* eof) n)
 
 renderTransparency :: Transparency -> String
 renderTransparency Transparent = ""
 renderTransparency Opaque      = " opaque"
+
+renderBuiltin :: Int -> Builtin -> [Expr] -> String
+renderBuiltin p Minus      [e1, e2]     = renderBinopl 6 " - "  p e1 e2
+renderBuiltin p Sum        [e1, e2]     = renderBinopl 6 " + "  p e1 e2
+renderBuiltin p Product    [e1, e2]     = renderBinopl 7 " * "  p e1 e2
+renderBuiltin p Divide     [e1, e2]     = renderBinopl 7 " / "  p e1 e2
+renderBuiltin p Modulo     [e1, e2]     = renderBinopl 7 " % "  p e1 e2
+renderBuiltin p Ge         [e1, e2]     = renderBinop  4 " >= " p e1 e2
+renderBuiltin p Le         [e1, e2]     = renderBinop  4 " <= " p e1 e2
+renderBuiltin p Gt         [e1, e2]     = renderBinop  4 " > "  p e1 e2
+renderBuiltin p Lt         [e1, e2]     = renderBinop  4 " < "  p e1 e2
+renderBuiltin p Eq         [e1, e2]     = renderBinop  4 " == " p e1 e2
+renderBuiltin p Ne         [e1, e2]     = renderBinop  4 " /= " p e1 e2
+renderBuiltin p And        [e1, e2]     = renderBinopr 3 " && " p e1 e2
+renderBuiltin p Or         [e1, e2]     = renderBinopr 2 " || " p e1 e2
+renderBuiltin p IfThenElse [e1, e2, e3] =
+  parensIf (p > 0) ("if " <> render e1 <> " then " <> render e2 <> " else " <> render e3)
+renderBuiltin _ b          es           = render b <> renderArgs es
+
+renderBinopl :: (Render a1, Render a2) => Int -> String -> Int -> a1 -> a2 -> String
+renderBinopl t txt p e1 e2 = parensIf (p > t) (renderAtPrio t e1 <> txt <> renderAtPrio (t + 1) e2)
+
+renderBinopr :: (Render a1, Render a2) => Int -> String -> Int -> a1 -> a2 -> String
+renderBinopr t txt p e1 e2 = parensIf (p > t) (renderAtPrio (t + 1) e1 <> txt <> renderAtPrio t e2)
+
+renderBinop :: (Render a1, Render a2) => Int -> String -> Int -> a1 -> a2 -> String
+renderBinop t txt p e1 e2 = parensIf (p > t) (renderAtPrio (t + 1) e1 <> txt <> renderAtPrio (t + 1) e2)
+
+parensIf :: Bool -> String -> String
+parensIf True  x = "(" <> x <> ")"
+parensIf False x = x
 
 instance Render Builtin where
   render :: Builtin -> String
