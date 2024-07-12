@@ -18,6 +18,7 @@ executable simala
   hs-source-dirs: app
   build-depends:
     base,
+    optparse-applicative,
     simala
   main-is: Main.hs
 

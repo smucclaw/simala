@@ -20,9 +20,14 @@ data Decl =
 data Instruction =
     Declare Decl
   | Eval Expr
-  | ToggleTrace
-  | Quit
+  | ReplCommand ReplCommand
   | Noop
+  deriving stock Show
+
+data ReplCommand =
+    ToggleTrace
+  | Help
+  | Quit
   deriving stock Show
 
 data Expr =

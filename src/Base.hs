@@ -5,6 +5,7 @@ module Base (module X) where
 import Control.Monad as X
 import Control.Monad.Except as X
 import Control.Monad.Identity as X
+import Control.Monad.Reader as X
 import Control.Monad.State as X
 import Data.Coerce as X
 import Data.IORef as X
@@ -20,3 +21,4 @@ import GHC.Generics as X (Generic)
 import Optics.Setter as X
 import Optics.State as X
 import Prettyprinter as X (Doc, Pretty(..), (<+>))
+import System.IO as X

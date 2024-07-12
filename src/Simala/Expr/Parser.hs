@@ -215,11 +215,12 @@ decl =
 
 instruction :: Parser Instruction
 instruction =
-      Declare     <$> try decl
-  <|> Eval        <$> expr
-  <|> ToggleTrace <$  (symbol ":trace" <|> symbol ":t")
-  <|> Quit        <$  (symbol ":quit" <|> symbol ":q")
-  <|> Noop        <$  pure ()
+      Declare                 <$> try decl
+  <|> Eval                    <$> expr
+  <|> ReplCommand ToggleTrace <$  (symbol ":trace" <|> symbol ":t")
+  <|> ReplCommand Quit        <$  (symbol ":quit" <|> symbol ":q")
+  <|> ReplCommand Help        <$  (symbol ":help" <|> symbol ":h")
+  <|> Noop                    <$  pure ()
 
 execParser :: Parser a -> String -> Text -> Either String a
 execParser p f input =
