@@ -36,7 +36,6 @@ library
     prettyprinter,
     text
   exposed-modules:
-    SimplifiedMathLang
     Base
     Base.Map
     Base.Pretty

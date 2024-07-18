@@ -24,8 +24,14 @@ data Instruction =
   | Noop
   deriving stock Show
 
+data TraceMode =
+    TraceOff
+  | TraceResults
+  | TraceFull
+  deriving stock Show
+
 data ReplCommand =
-    ToggleTrace
+    SetTrace TraceMode
   | Help
   | Quit
   deriving stock Show

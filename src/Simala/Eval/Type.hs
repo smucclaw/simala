@@ -7,13 +7,13 @@ import Util.RevList
 -- * Abstract syntax
 
 data EvalAction =
-    Enter Expr
+    Enter (Maybe Name) Expr
   | Exit Val
   | Exception EvalError
   deriving stock Show
 
 data EvalTrace =
-  Trace Expr [EvalTrace] (Either EvalError Val)
+  Trace (Maybe Name) Expr [EvalTrace] (Either EvalError Val)
   deriving stock Show
 
 data EvalState =
@@ -25,7 +25,7 @@ data EvalState =
   deriving stock (Generic, Show)
 
 data EvalFrame =
-  Frame Expr (RevList EvalTrace)
+  Frame (Maybe Name) Expr (RevList EvalTrace)
 
 type Eval :: Type -> Type
 newtype Eval a =

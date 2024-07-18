@@ -14,8 +14,19 @@ import Simala.Expr.Type
 eval :: Expr -> Eval Val
 eval e = do
   t <- getTransparency
-  when (t == Transparent) (enter e)
+  when (t == Transparent) (enter Nothing e)
   v <- eval' e
+  when (t == Transparent) (exit v)
+  pure v
+
+-- | Evaluate an expression, but change the 
+-- transparency level only for the inner part.
+--
+evalWithTransparency :: Transparency -> Name -> Expr -> Eval Val
+evalWithTransparency t' n e = do
+  t <- getTransparency
+  when (t == Transparent) (enter (Just n) e)
+  v <- withTransparency t' (eval' e)
   when (t == Transparent) (exit v)
   pure v
 
@@ -65,13 +76,13 @@ eval' (Letrec t n e1 e2)  = do
 
 evalDecl :: Decl -> Eval Env
 evalDecl (NonRec t n e) = do
-  v <- eval e
+  v <- evalWithTransparency t n e
   let v' = attachTransparency t v
   pure (singletonEnv n v')
 evalDecl (Rec t n e) = do
   let env' = singletonEnv n VBlackhole
   env <- getEnv
-  v <- withEnv (extendEnv env env') (eval e)
+  v <- withEnv (extendEnv env env') (evalWithTransparency t n e)
   MkClosure _ ns body envc <- expectFunction v
   let env'' = singletonEnv n v'
       v' = VClosure (MkClosure t ns body (extendEnv envc env''))
@@ -246,20 +257,46 @@ evalBuiltin Case es = do
       c <- (eval >=> expectFunction) e2
       evalClosureVal c [v, VList vs]
 
-doEvalTracing :: Bool -> Env -> Expr -> IO ()
+doEvalTracing :: TraceMode -> Env -> Expr -> IO ()
 doEvalTracing tracing env e =
   case runEval (withEnv env (eval e)) of
-    (r, t) -> do
+    (r, t) ->
+      case tracing of
+        TraceOff     ->
+          renderFinalResult r
+        TraceResults -> do
+          Text.putStr (renderResultsTrace t)
+          renderFinalResult r
+        TraceFull    -> do
+          Text.putStr (renderFullTrace t)
+          renderFinalResult r
+  where
+    renderFinalResult r =
+      case r of
+        Left err -> print err
+        Right x  -> Text.putStrLn (render x)
+{-
       when tracing (Text.putStr (renderEvalTrace t))
       case r of
         Left err -> print err
         Right x -> unless tracing (Text.putStrLn (render x))
+-}
 
-doEvalDeclTracing :: Bool -> Env -> Decl -> IO (Env -> Env)
+doEvalDeclTracing :: TraceMode -> Env -> Decl -> IO (Env -> Env)
 doEvalDeclTracing tracing env d =
   case runEval (withEnv env (evalDecl d)) of
     (r, t) -> do
-      when tracing (Text.putStr (renderEvalTrace t))
+      case tracing of
+        TraceOff     ->
+          processFinalResult r
+        TraceResults -> do
+          Text.putStr (renderResultsTrace t)
+          processFinalResult r
+        TraceFull    -> do
+          Text.putStr (renderFullTrace t)
+          processFinalResult r
+  where
+    processFinalResult r =
       case r of
         Left err -> do
           print err
@@ -267,6 +304,6 @@ doEvalDeclTracing tracing env d =
         Right env' -> do
           pure (\ x -> extendEnv x env')
 
-doEval :: Expr -> IO ()
-doEval = doEvalTracing True emptyEnv
+doEval :: TraceMode -> Expr -> IO ()
+doEval tm = doEvalTracing tm emptyEnv
 

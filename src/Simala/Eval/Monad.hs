@@ -9,52 +9,67 @@ import Util.RevList
 
 import Data.Bifunctor
 
-renderEvalTrace :: EvalTrace -> Text
-renderEvalTrace = go 1
+renderFullTrace :: EvalTrace -> Text
+renderFullTrace = go 1
   where
-    go lvl (Trace e subs v) = line lvl ">" (render e) <> Text.concat (map (go (lvl + 1)) subs) <> renderResult lvl v -- line lvl '<' (render v)
+    go lvl (Trace (Just n) e subs v) = line lvl ">" (render n <> " = " <> render e) <> Text.concat (map (go (lvl + 1)) subs) <> renderResult lvl (Just n) v
+    go lvl (Trace Nothing  e subs v) = line lvl ">" (render e) <> Text.concat (map (go (lvl + 1)) subs) <> renderResult lvl Nothing v -- line lvl '<' (render v)
     line lvl c msg = Text.replicate (lvl * 3) c <> " " <> msg <> "\n"
-    renderResult lvl (Right x) = line lvl "<" (render x)
-    renderResult lvl (Left x)  = line lvl "*" (render x)
+    renderResult :: Int -> Maybe Name -> Either EvalError Val -> Text
+    renderResult lvl (Just n) (Right x) = line lvl "<" (render n <> " = " <> render x)
+    renderResult lvl (Just n) (Left x)  = line lvl "*" (render n <> " aborted with " <> render x)
+    renderResult lvl Nothing  (Right x) = line lvl "<" (render x)
+    renderResult lvl Nothing  (Left x)  = line lvl "*" (render x)
+
+renderResultsTrace :: EvalTrace -> Text
+renderResultsTrace = go
+  where
+    go (Trace mn _ subs v) = Text.concat (map go subs) <> renderResult mn v
+    renderResult :: Maybe Name -> Either EvalError Val -> Text
+    renderResult (Just n) (Right x) = render n <> " = " <> render x <> "\n"
+    renderResult (Just n) (Left x)  = render n <> " aborted with " <> render x <> "\n"
+    renderResult Nothing  _         = ""
 
 buildEvalTrace :: [EvalAction] -> EvalTrace
 buildEvalTrace = go []
   where
     go :: [EvalFrame] -> [EvalAction] -> EvalTrace
-    go fs                  (Enter e : actions) = go (Frame e emptyRevList : fs) actions
-    go (Frame e subs : fs) (Exit v  : actions) =
+    go fs                     (Enter mn e : actions) = go (Frame mn e emptyRevList : fs) actions
+    go (Frame mn e subs : fs) (Exit v     : actions) =
       let
-        t = Trace e (unRevList subs) (Right v)
+        t = Trace mn e (unRevList subs) (Right v)
       in
         case fs of
-          []                     -> t -- TODO: strictly speaking, we should check if actions is empty
-          (Frame e' subs' : fs') -> go (Frame e' (pushRevList t subs') : fs') actions
-    go (Frame e subs : fs) actions@(Exception exc : _) =
+          []                         -> t -- TODO: strictly speaking, we should check if actions is empty
+          (Frame mn' e' subs' : fs') -> go (Frame mn' e' (pushRevList t subs') : fs') actions
+    go (Frame mn e subs : fs) actions@(Exception exc : _) =
       let
-        t = Trace e (unRevList subs) (Left exc)
+        t = Trace mn e (unRevList subs) (Left exc)
       in
         case fs of
           []                     -> t
-          (Frame e' subs' : fs') -> go (Frame e' (pushRevList t subs') : fs') actions
+          (Frame mn' e' subs' : fs') -> go (Frame mn' e' (pushRevList t subs') : fs') actions
     go _ _ = error "illegal eval action sequence"
 
 simplifyEvalTrace' :: EvalTrace -> Maybe EvalTrace
-simplifyEvalTrace' (Trace e subs v) =
+simplifyEvalTrace' (Trace mn e subs v) =
   let
     subs' = mapMaybe simplifyEvalTrace' subs
-    t' = Trace e subs' v
+    t' = Trace mn e subs' v
   in
+    -- NOTE: We do not simply subtraces with explicit names, because
+    -- we assume they're supposed to be seen in the trace.
     case t' of
-      Trace (Lit _)    [] _ -> Nothing
-      Trace (List _)   [] _ -> Nothing
-      Trace (Record _) [] _ -> Nothing
-      Trace (Atom _)   [] _ -> Nothing
-      _                     -> Just t'
+      Trace Nothing (Lit _)    [] _ -> Nothing
+      Trace Nothing (List _)   [] _ -> Nothing
+      Trace Nothing (Record _) [] _ -> Nothing
+      Trace Nothing (Atom _)   [] _ -> Nothing
+      _                             -> Just t'
 
 simplifyEvalTrace :: EvalTrace -> EvalTrace
-simplifyEvalTrace t@(Trace e subs v) =
+simplifyEvalTrace t@(Trace mn e subs v) =
   case simplifyEvalTrace' t of
-    Nothing -> Trace e (mapMaybe simplifyEvalTrace' subs) v
+    Nothing -> Trace mn e (mapMaybe simplifyEvalTrace' subs) v
     Just t' -> t'
 
 arityError :: Int -> Int -> Eval a
@@ -159,8 +174,8 @@ pushEvalAction :: EvalAction -> Eval ()
 pushEvalAction action =
   modifying #actions (pushRevList action)
 
-enter :: Expr -> Eval ()
-enter = pushEvalAction . Enter
+enter :: Maybe Name -> Expr -> Eval ()
+enter mn = pushEvalAction . Enter mn
 
 exit :: Val -> Eval ()
 exit = pushEvalAction . Exit

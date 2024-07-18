@@ -11,7 +11,7 @@ import System.Console.Haskeline
 data ReplState =
   MkReplState
     { env     :: !Env
-    , tracing :: !Bool
+    , tracing :: !TraceMode
     }
   deriving stock (Generic, Show)
 
@@ -29,11 +29,11 @@ inputLine :: String -> Repl (Maybe Text)
 inputLine prompt =
   MkRepl (const ((Text.pack <$>) <$> getInputLine prompt))
 
-toggleTracing :: Repl ()
-toggleTracing =
-  modifying' #tracing not
+setTracing :: TraceMode -> Repl ()
+setTracing =
+  assign' #tracing
 
-getTracing :: Repl Bool
+getTracing :: Repl TraceMode
 getTracing =
   use #tracing
 
@@ -47,7 +47,7 @@ setEnv =
 
 initialReplState :: ReplState
 initialReplState =
-  MkReplState emptyEnv False
+  MkReplState emptyEnv TraceOff
 
 -- | Entry point for the repl.
 runRepl :: IO ()
@@ -81,12 +81,14 @@ handleInstruction continue i = do
         putStrLn "  <identifier> = <expr>      bind result of <expr> to <identifier>"
         putStrLn "  rec <identifier> = <expr>  recursive binding"
         putStrLn "  <expr>                     evaluate <expr>"
-        putStrLn "  :t, :trace                 toggle execution traces"
+        putStrLn "  :t, :trace                 full tracing"
+        putStrLn "  :r, :results               results tracing"
+        putStrLn "  :n, :notrace               no tracing"
         putStrLn "  :h, :help                  this help text"
         putStrLn "  :q, :quit                  quit"
       continue
-    ReplCommand ToggleTrace -> do
-      toggleTracing
+    ReplCommand (SetTrace tm) -> do
+      setTracing tm
       continue
     Declare d -> do
       t <- getTracing
