@@ -18,6 +18,7 @@ executable simala
   hs-source-dirs: app
   build-depends:
     base,
+    aeson,
     optparse-applicative,
     simala
   main-is: Main.hs
@@ -27,6 +28,7 @@ library
   hs-source-dirs: src
   build-depends:
     base,
+    aeson,
     containers,
     haskeline,
     megaparsec,
@@ -47,5 +49,6 @@ library
     Simala.Expr.Parser
     Simala.Expr.Render
     Simala.Expr.Type
+    Simala.Json.Parser
     Simala.Repl
     Util.RevList

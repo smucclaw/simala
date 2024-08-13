@@ -88,6 +88,12 @@ evalDecl (Rec t n e) = do
       v' = VClosure (MkClosure t ns body (extendEnv envc env''))
   pure env''
 
+evalDecls :: [Decl] -> Eval ()
+evalDecls = traverse_ $ \ d -> do
+  env' <- evalDecl d
+  env <- getEnv
+  setEnv (extendEnv env env')
+
 evalClosure :: Closure -> [Expr] -> Eval Val
 evalClosure (MkClosure t argNames body env) args = do
   env' <- bind argNames args
@@ -281,6 +287,27 @@ doEvalTracing tracing env e =
         Left err -> print err
         Right x -> unless tracing (Text.putStrLn (render x))
 -}
+
+doEvalDeclsTracing :: TraceMode -> Env -> [Decl] -> IO Env
+doEvalDeclsTracing tracing env ds =
+  case runEval (setEnv env >> evalDecls ds >> getEnv) of
+    (r, t) -> do
+      case tracing of
+        TraceOff     ->
+          processFinalResult r
+        TraceResults -> do
+          processFinalResult r
+        TraceFull    -> do
+          Text.putStr (renderFullTrace t)
+          processFinalResult r
+  where
+    processFinalResult r =
+      case r of
+        Left err -> do
+          print err
+          pure env
+        Right env' -> do
+          pure env'
 
 doEvalDeclTracing :: TraceMode -> Env -> Decl -> IO (Env -> Env)
 doEvalDeclTracing tracing env d =

@@ -183,12 +183,15 @@ exit = pushEvalAction . Exit
 getEnv :: Eval Env
 getEnv = use #env
 
+setEnv :: Env -> Eval ()
+setEnv = assign #env
+
 withEnv :: Env -> Eval a -> Eval a
 withEnv env m = do
   savedEnv <- getEnv
-  assign #env env
+  setEnv env
   r <- m
-  assign #env savedEnv
+  setEnv savedEnv
   pure r
 
 initialEvalState :: EvalState

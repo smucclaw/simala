@@ -1,0 +1,5 @@
+-- run this for example via:
+--
+-- cabal run -- simala examples/decisiondecl.simala examples/decisioninput.simala examples/decisionmain.simala
+--
+get_opinion(business, investor)

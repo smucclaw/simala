@@ -9,6 +9,7 @@ import Control.Monad.Reader as X
 import Control.Monad.State as X
 import Data.Coerce as X
 import Data.IORef as X
+import Data.Foldable as X
 import Data.Kind as X
 import Data.List as X
 import Data.Map.Strict as X (Map, (!))

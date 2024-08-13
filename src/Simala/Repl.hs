@@ -50,10 +50,10 @@ initialReplState =
   MkReplState emptyEnv TraceOff
 
 -- | Entry point for the repl.
-runRepl :: IO ()
-runRepl = do
+runRepl :: Env -> IO ()
+runRepl env = do
   s <- newIORef initialReplState
-  runInputT defaultSettings (repl.run s)
+  runInputT defaultSettings ((setEnv env >> repl).run s)
 
 repl :: Repl ()
 repl = do

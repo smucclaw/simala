@@ -1,12 +1,14 @@
 module Main where
 
 import Base
-import qualified Base.Text as Text
+import Simala.Json.Parser
 import Simala.Expr.Evaluator
 import Simala.Expr.Parser
 import Simala.Expr.Type
 import Simala.Repl
 
+import qualified Data.Aeson as Aeson
+import qualified Base.Text as Text
 import Options.Applicative as Options
 
 data Options =
@@ -20,7 +22,7 @@ optionsDescription :: Options.Parser Options
 optionsDescription =
   MkOptions
   <$> switch (long "repl" <> help "Start in REPL mode")
-  <*> (toTracingMode <$> strOption (long "tracing" <> help "Tracing, one of \"off\", \"full\" (default), \"results\"") <|> pure TraceFull)
+  <*> (toTracingMode <$> strOption (long "tracing" <> help "Tracing, one of \"off\", \"full\" (default), \"results\"") <|> pure TraceResults)
   <*> many (strArgument (metavar "FILES..."))
 
 toTracingMode :: String -> TraceMode
@@ -43,13 +45,46 @@ main = do
     then do
       hPutStrLn stderr "simala: no input files given; use --help for help"
     else if options.repl
-      then runRepl
-      else compileFiles options.tracing options.files
+      then do
+        env <- compileDeclOrJsonFiles options.tracing options.files emptyEnv
+        runRepl env
+      else compileFiles options.tracing options.files emptyEnv
 
-compileFiles :: TraceMode -> [FilePath] -> IO ()
-compileFiles tm inputFiles = do
-  forM_ inputFiles $ \ f -> do
-    e <- Text.readFile f
-    case parseExpr f e of
-      Right e' -> doEval tm e'
-      Left err -> putStr err
+-- | Try to opportunistically parse as JSON, otherwise as Simala.
+compileDeclOrJsonFile :: TraceMode -> FilePath -> Env -> IO Env
+compileDeclOrJsonFile tm inputFile env = do
+  aesonResult <- Aeson.eitherDecodeFileStrict inputFile
+  case aesonResult of
+    Right v -> case jsonToDecls v of
+      Just ds -> doEvalDeclsTracing tm env ds
+      Nothing -> do
+        putStr ("Input file " <> inputFile <> " looks like JSON, but does not contain a record with declarations.")
+        pure emptyEnv
+    Left _ -> compileDeclFile tm inputFile env
+
+compileDeclFile :: TraceMode -> FilePath -> Env -> IO Env
+compileDeclFile tm inputFile env = do
+  input <- Text.readFile inputFile
+  case parseDecls inputFile input of
+    Right ds -> doEvalDeclsTracing tm env ds
+    Left err -> putStr err >> pure env
+
+compileExprFile :: TraceMode -> FilePath -> Env -> IO ()
+compileExprFile tm inputFile env = do
+  input <- Text.readFile inputFile
+  case parseExpr inputFile input of
+    Right e  -> doEvalTracing tm env e
+    Left err -> putStr err
+
+compileDeclOrJsonFiles :: TraceMode -> [FilePath] -> Env -> IO Env
+compileDeclOrJsonFiles _  []       env = pure env
+compileDeclOrJsonFiles tm (f : fs) env = do
+  env' <- compileDeclOrJsonFile tm f env
+  compileDeclOrJsonFiles tm fs env'
+
+compileFiles :: TraceMode -> [FilePath] -> Env -> IO ()
+compileFiles _  []       _   = pure ()
+compileFiles tm [f]      env = compileExprFile tm f env
+compileFiles tm (f : fs) env = do
+  env' <- compileDeclOrJsonFile tm f env
+  compileFiles tm fs env'
