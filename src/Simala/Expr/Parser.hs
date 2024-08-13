@@ -222,6 +222,10 @@ decl =
       NonRec <$> transparency <*> name <* symbol "=" <*> expr
   <|> Rec    <$  keyword "rec" <*> transparency <*> name <* symbol "=" <*> expr
 
+decls :: Parser [Decl]
+decls =
+  sepBy decl (symbol ";")
+
 instruction :: Parser Instruction
 instruction =
       Declare                             <$> try decl
@@ -243,6 +247,11 @@ execParser p f input =
 parseExpr :: String -> Text -> Either String Expr
 parseExpr =
   execParser expr
+
+-- | Entry point for the declarations parser.
+parseDecls :: String -> Text -> Either String [Decl]
+parseDecls =
+  execParser decls
 
 -- | Entry point for the repl parser.
 parseInstruction :: Text -> Either String Instruction

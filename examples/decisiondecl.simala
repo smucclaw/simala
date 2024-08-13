@@ -1,0 +1,17 @@
+get_opinion =
+
+  fun (b, inv) =>
+
+  if
+          b.stage     == 'seed
+       && b.sector    == 'information_technology
+       && b.stage_com == 'pre_revenue
+        
+    ||    b.stage     == 'series_a
+       && b.sector    == 'information_technology
+       && b.stage_com == 'pre_profit
+        
+    || inv.has_ESG
+
+  then 'interesting
+  else 'reject

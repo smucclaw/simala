@@ -1,0 +1,9 @@
+{ "business":
+  { "stage": "seed",
+    "sector": "information_technology",
+    "stage_com": "pre_profit"
+  },
+  "investor":
+  { "has_ESG": true
+  }
+}
