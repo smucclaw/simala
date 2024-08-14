@@ -30,6 +30,10 @@ instance Render EvalError where
   render :: EvalError -> Text
   render = Text.pack . show
 
+instance Render Decl where
+  renderAtPrio _ (Rec t name expr)    = "rec" <> renderTransparency t <> " " <> render name <> " = " <> render expr
+  renderAtPrio _ (NonRec t name expr) =          renderTransparency t <> " " <> render name <> " = " <> render expr
+
 instance Render Expr where
   renderAtPrio :: Int -> Expr -> Text
   renderAtPrio p (Builtin b es)     = renderBuiltin p b es
