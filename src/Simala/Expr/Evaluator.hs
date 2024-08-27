@@ -65,14 +65,10 @@ eval' (App f args)        = do
 eval' (Fun t ns body)     = do
   env <- getEnv
   pure (VClosure (MkClosure t ns body env))
-eval' (Let t n e1 e2)     = do
-  env' <- evalDecl (NonRec t n e1)
+eval' (Let d e)     = do
+  env' <- evalDecl d
   env <- getEnv
-  withEnv (extendEnv env env') (eval e2)
-eval' (Letrec t n e1 e2)  = do
-  env'' <- evalDecl (Rec t n e1)
-  env <- getEnv
-  withEnv (extendEnv env env'') (eval e2)
+  withEnv (extendEnv env env') (eval e)
 
 evalDecl :: Decl -> Eval Env
 evalDecl (NonRec t n e) = do
