@@ -1,4 +1,4 @@
--- The unforuntately quite complicated way in which we have to
+-- The unfortunately quite complicated way in which we have to
 -- encode mutually recursive definitions right now. It would be
 -- better if recursive declarations would work for non-functions.
 --
