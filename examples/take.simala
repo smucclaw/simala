@@ -1,4 +1,4 @@
-letrec take =
+let rec take =
 
   fun (n, xs) =>
 
