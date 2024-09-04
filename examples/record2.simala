@@ -1,0 +1,5 @@
+let a = { x = 2, y = 3 }
+in
+let b = { x = 'atom, z = 3 }
+in
+    merge(a, b)

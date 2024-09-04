@@ -19,7 +19,7 @@ eval e = do
   when (t == Transparent) (exit v)
   pure v
 
--- | Evaluate an expression, but change the 
+-- | Evaluate an expression, but change the
 -- transparency level only for the inner part.
 --
 evalWithTransparency :: Transparency -> Name -> Expr -> Eval Val
@@ -262,6 +262,14 @@ evalBuiltin Case es = do
     (v : vs) -> do
       c <- (eval >=> expectFunction) e2
       evalClosureVal c [v, VList vs]
+evalBuiltin Merge es = do
+  (e1, e2) <- expectArity2 es
+  r1 <- (eval >=> expectRecord) e1
+  r2 <- (eval >=> expectRecord) e2
+  -- Right biased merging of records.
+  -- We could be smarter in the case of nested records.
+  let r = Map.toList $ Map.unionWith (\_ b -> b) (Map.fromList r1) (Map.fromList r2)
+  pure $ VRecord r
 
 doEvalTracing :: TraceMode -> Env -> Expr -> IO ()
 doEvalTracing tracing env e =
