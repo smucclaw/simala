@@ -39,7 +39,7 @@ keyword k =
 
 identifier :: Parser Text
 identifier =
-  Text.cons <$> satisfy isAlpha <*> takeWhileP (Just "identifier char") (\ x -> isAlphaNum x || x `elem` ("_" :: String))
+  Text.cons <$> satisfy (\c -> isAlpha c || c == '#') <*> takeWhileP (Just "identifier char") (\ x -> isAlphaNum x || x `elem` ("_" :: String))
 
 name :: Parser Name
 name =
@@ -220,8 +220,12 @@ builtins =
 
 decl :: Parser Decl
 decl =
-      NonRec <$> transparency <*> name <* symbol "=" <*> expr
+      Eval   <$  keyword "#eval" <*> expr
+  <|> NonRec <$> transparency <*> name <* symbol "=" <*> expr
   <|> Rec    <$  keyword "rec" <*> transparency <*> name <* symbol "=" <*> expr
+
+replEvalDecl :: Parser Decl
+replEvalDecl = Eval <$> expr
 
 decls :: Parser [Decl]
 decls =
@@ -230,7 +234,7 @@ decls =
 instruction :: Parser Instruction
 instruction =
       Declare                             <$> try decl
-  <|> Eval                                <$> expr
+  <|> Declare                             <$> try replEvalDecl
   <|> ReplCommand (SetTrace TraceFull)    <$  (symbol ":trace" <|> symbol ":t")
   <|> ReplCommand (SetTrace TraceResults) <$  (symbol ":results" <|> symbol ":r")
   <|> ReplCommand (SetTrace TraceOff)     <$  (symbol ":notrace" <|> symbol ":n")

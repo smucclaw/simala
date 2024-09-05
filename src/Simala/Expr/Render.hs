@@ -33,6 +33,7 @@ instance Render EvalError where
 instance Render Decl where
   renderAtPrio _ (Rec t name expr)    = "rec" <> renderTransparency t <> " " <> render name <> " = " <> render expr
   renderAtPrio _ (NonRec t name expr) =          renderTransparency t <> " " <> render name <> " = " <> render expr
+  renderAtPrio _ (Eval expr)          = "#eval"                       <> " "                         <> render expr
 
 instance Render Expr where
   renderAtPrio :: Int -> Expr -> Text

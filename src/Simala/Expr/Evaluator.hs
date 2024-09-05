@@ -7,6 +7,7 @@ import Simala.Eval.Monad
 import Simala.Eval.Type
 import Simala.Expr.Render
 import Simala.Expr.Type
+import Util.RevList
 
 -- | Evaluate an expression. Produces a trace if
 -- the current transparency level warrants it.
@@ -87,6 +88,12 @@ evalDecl (Rec t n e) = do
   let env'' = singletonEnv n v'
       v' = VClosure (MkClosure t ns body (extendEnv envc env''))
   pure env''
+evalDecl (Eval e) = do
+  env <- getEnv
+  case runEval (withEnv env (eval e)) of
+    (r, t) -> do
+      modifying' #traces (pushRevList (r, t))
+  pure env
 
 evalDecls :: [Decl] -> Eval ()
 evalDecls = traverse_ $ \ d -> do
@@ -271,43 +278,18 @@ evalBuiltin Merge es = do
   let r = Map.toList $ Map.unionWith (\_ b -> b) (Map.fromList r1) (Map.fromList r2)
   pure $ VRecord r
 
-doEvalTracing :: TraceMode -> Env -> Expr -> IO ()
-doEvalTracing tracing env e =
-  case runEval (withEnv env (eval e)) of
-    (r, t) ->
-      case tracing of
-        TraceOff     ->
-          renderFinalResult r
-        TraceResults -> do
-          Text.putStr (renderResultsTrace t)
-          renderFinalResult r
-        TraceFull    -> do
-          Text.putStr (renderFullTrace t)
-          renderFinalResult r
-  where
-    renderFinalResult r =
-      case r of
-        Left err -> print err
-        Right x  -> Text.putStrLn (render x)
-{-
-      when tracing (Text.putStr (renderEvalTrace t))
-      case r of
-        Left err -> print err
-        Right x -> unless tracing (Text.putStrLn (render x))
--}
-
 doEvalDeclsTracing :: TraceMode -> Env -> [Decl] -> IO Env
 doEvalDeclsTracing tracing env ds =
-  case runEval (setEnv env >> evalDecls ds >> getEnv) of
-    (r, t) -> do
+  case runEval' (setEnv env >> evalDecls ds >> getEnv) of
+    (r, resultsAndTraces) -> do
       case tracing of
-        TraceOff     ->
-          processFinalResult r
+        TraceOff     -> do
+          renderEvaluationResultsWith resultsAndTraces Nothing
         TraceResults -> do
-          processFinalResult r
+          renderEvaluationResultsWith resultsAndTraces (Just renderResultsTrace)
         TraceFull    -> do
-          Text.putStr (renderFullTrace t)
-          processFinalResult r
+          renderEvaluationResultsWith resultsAndTraces (Just renderFullTrace)
+      processFinalResult r
   where
     processFinalResult r =
       case r of
@@ -319,17 +301,16 @@ doEvalDeclsTracing tracing env ds =
 
 doEvalDeclTracing :: TraceMode -> Env -> Decl -> IO (Env -> Env)
 doEvalDeclTracing tracing env d =
-  case runEval (withEnv env (evalDecl d)) of
-    (r, t) -> do
+  case runEval' (withEnv env (evalDecl d)) of
+    (r, resultsAndTraces) -> do
       case tracing of
-        TraceOff     ->
-          processFinalResult r
+        TraceOff     -> do
+          renderEvaluationResultsWith resultsAndTraces Nothing
         TraceResults -> do
-          Text.putStr (renderResultsTrace t)
-          processFinalResult r
+          renderEvaluationResultsWith resultsAndTraces (Just renderResultsTrace)
         TraceFull    -> do
-          Text.putStr (renderFullTrace t)
-          processFinalResult r
+          renderEvaluationResultsWith resultsAndTraces (Just renderFullTrace)
+      processFinalResult r
   where
     processFinalResult r =
       case r of
@@ -339,6 +320,15 @@ doEvalDeclTracing tracing env d =
         Right env' -> do
           pure (\ x -> extendEnv x env')
 
-doEval :: TraceMode -> Expr -> IO ()
-doEval tm = doEvalTracing tm emptyEnv
+renderEvaluationResultsWith :: [(Either EvalError Val, EvalTrace)] -> Maybe (EvalTrace -> Text) -> IO ()
+renderEvaluationResultsWith xs Nothing = traverse_ (renderIntermediateResult . fst) xs
+renderEvaluationResultsWith xs (Just f) = traverse_ (\(val, trace) -> do
+  Text.putStr $ f trace
+  renderIntermediateResult val
+  ) xs
 
+renderIntermediateResult :: Either EvalError Val -> IO ()
+renderIntermediateResult r =
+  case r of
+    Left err -> print err
+    Right x  -> Text.putStrLn (render x)

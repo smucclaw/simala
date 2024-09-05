@@ -20,6 +20,7 @@ data EvalState =
   MkEvalState
     { env          :: !Env
     , actions      :: RevList EvalAction
+    , traces       :: RevList (Either EvalError Val, EvalTrace)
     , transparency :: !Transparency
     }
   deriving stock (Generic, Show)

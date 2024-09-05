@@ -69,13 +69,6 @@ compileDeclFile tm inputFile env = do
     Right ds -> doEvalDeclsTracing tm env ds
     Left err -> putStr err >> pure env
 
-compileExprFile :: TraceMode -> FilePath -> Env -> IO ()
-compileExprFile tm inputFile env = do
-  input <- Text.readFile inputFile
-  case parseExpr inputFile input of
-    Right e  -> doEvalTracing tm env e
-    Left err -> putStr err
-
 compileDeclOrJsonFiles :: TraceMode -> [FilePath] -> Env -> IO Env
 compileDeclOrJsonFiles _  []       env = pure env
 compileDeclOrJsonFiles tm (f : fs) env = do
@@ -84,7 +77,6 @@ compileDeclOrJsonFiles tm (f : fs) env = do
 
 compileFiles :: TraceMode -> [FilePath] -> Env -> IO ()
 compileFiles _  []       _   = pure ()
-compileFiles tm [f]      env = compileExprFile tm f env
 compileFiles tm (f : fs) env = do
   env' <- compileDeclOrJsonFile tm f env
   compileFiles tm fs env'
