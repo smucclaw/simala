@@ -92,6 +92,7 @@ renderBuiltin p Eq         [e1, e2]     = renderBinop  4 " == " p e1 e2
 renderBuiltin p Ne         [e1, e2]     = renderBinop  4 " /= " p e1 e2
 renderBuiltin p And        [e1, e2]     = renderBinopr 3 " && " p e1 e2
 renderBuiltin p Or         [e1, e2]     = renderBinopr 2 " || " p e1 e2
+renderBuiltin p Concat     [e1, e2]     = renderBinopr 2 " <> " p e1 e2
 renderBuiltin p IfThenElse [e1, e2, e3] =
   parensIf (p > 0) ("if " <> render e1 <> " then " <> render e2 <> " else " <> render e3)
 renderBuiltin _ b          es           = render b <> renderArgs es
@@ -132,6 +133,7 @@ instance Render Builtin where
   render Foldl      = "foldl"
   render Case       = "case"
   render Merge      = "merge"
+  render Concat      = "concat"
 
 instance Render Lit where
   render :: Lit -> Text

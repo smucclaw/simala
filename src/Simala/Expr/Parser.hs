@@ -105,6 +105,7 @@ operatorTable =
     ]
     -- 5
   , [ binaryr ":" Cons
+    , binaryl "<>" (builtin2 Concat)
     ]
     -- 4
   , [ binaryl ">=" (builtin2 Ge)

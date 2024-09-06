@@ -1,0 +1,11 @@
+x = 'atom1 ;
+y = 'atom2 ;
+
+#eval x <> y ;
+
+a = x <> '`_` <> 'atom3 ;
+b = 'atom4 <> '`_` <> y ;
+
+#eval a ;
+#eval b ;
+#eval a <> '`_` <> b

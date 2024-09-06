@@ -87,6 +87,7 @@ data Builtin =
   | Foldr      -- ^ right fold, arity 3
   | Case       -- ^ case on lists, arity 3
   | Merge      -- ^ Merge two records, arity 2
+  | Concat     -- ^ Concat two atoms, arity 2
   deriving stock Show
 
 -- | A value.

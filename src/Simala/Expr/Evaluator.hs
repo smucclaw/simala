@@ -277,6 +277,11 @@ evalBuiltin Merge es = do
   -- We could be smarter in the case of nested records.
   let r = Map.toList $ Map.unionWith (\_ b -> b) (Map.fromList r1) (Map.fromList r2)
   pure $ VRecord r
+evalBuiltin Concat es = do
+  (e1, e2) <- expectArity2 es
+  r1 <- (eval >=> expectAtom) e1
+  r2 <- (eval >=> expectAtom) e2
+  pure $ VAtom $ r1 <> r2
 
 doEvalDeclsTracing :: TraceMode -> Env -> [Decl] -> IO Env
 doEvalDeclsTracing tracing env ds =
