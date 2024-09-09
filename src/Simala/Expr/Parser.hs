@@ -211,6 +211,7 @@ builtins =
     , ("case", Case)
     , ("sum", Sum)
     , ("product", Product)
+    , ("merge", Merge)
     ]
 
 decl :: Parser Decl

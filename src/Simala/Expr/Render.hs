@@ -129,6 +129,7 @@ instance Render Builtin where
   render Foldr      = "foldr"
   render Foldl      = "foldl"
   render Case       = "case"
+  render Merge      = "merge"
 
 instance Render Lit where
   render :: Lit -> Text
