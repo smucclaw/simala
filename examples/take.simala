@@ -1,4 +1,4 @@
-letrec take =
+rec take =
 
   fun (n, xs) =>
 
@@ -6,8 +6,6 @@ letrec take =
       then []
       else
 
-        case ([], fun (y, ys) => y : take (n - 1, ys), xs)
+        case ([], fun (y, ys) => y : take (n - 1, ys), xs);
 
-in
-
-  take(3, [1,2,3,4,5,6,7,8,9,10])
+#eval take(3, [1,2,3,4,5,6,7,8,9,10])

@@ -1,1 +1,1 @@
-true && false || true && true
+#eval true && false || true && true
