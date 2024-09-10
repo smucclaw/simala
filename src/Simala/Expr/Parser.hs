@@ -43,7 +43,7 @@ keyword k =
 
 identifier :: Parser Text
 identifier =
-  Text.cons <$> satisfy (\c -> isAlpha c || c == '#') <*> takeWhileP (Just "identifier char") (\ x -> isAlphaNum x || x `elem` ("_" :: String))
+  Text.cons <$> satisfy isAlpha <*> takeWhileP (Just "identifier char") (\ x -> isAlphaNum x || x `elem` ("_" :: String))
 
 name :: Parser Name
 name =
