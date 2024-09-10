@@ -5,7 +5,8 @@ import qualified Base.Map as Map
 
 type Name = Text
 
--- | Currently only for use in the repl.
+-- | Declarations are used in the repl, in declaration files,
+-- and in let expressions.
 --
 -- Mutually recursive operations are not directly possible right
 -- now and have to be simulated via records.
@@ -47,8 +48,7 @@ data Expr =
   | Record     (Row Expr)                  -- record construction
   | Project    Expr Name                   -- record projection
   | Fun        Transparency [Name] Expr    -- anonymous function
-  | Let        Transparency Name Expr Expr -- local declaration
-  | Letrec     Transparency Name Expr Expr -- local recursive declaration
+  | Let        Decl Expr                   -- possibly recursive let-binding
   | Undefined                              -- unclear
   deriving stock Show
 
@@ -178,3 +178,11 @@ singletonEnv n v = Map.singleton n v
 -- | Look up a name in an environment.
 lookupInEnv :: Name -> Env -> Maybe Val
 lookupInEnv = Map.lookup
+
+-- | Helper function to create an if-then-else construct.
+mkIfThenElse :: Expr -> Expr -> Expr -> Expr
+mkIfThenElse c t e = Builtin IfThenElse [c, t, e]
+
+-- | Helper function to create a nested let expression.
+mkLet :: [Decl] -> Expr -> Expr
+mkLet ds e = foldr Let e ds

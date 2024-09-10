@@ -1,0 +1,9 @@
+-- The unfortunately quite complicated way in which we have to
+-- encode mutually recursive definitions right now. It would be
+-- better if recursive declarations would work for non-functions.
+--
+let rec evenodd = fun (unused) =>
+  { even = fun (x) => x == 0 || evenodd(unused).odd(x - 1)
+  , odd  = fun (x) => x == 1 || evenodd(unused).even(x - 1)
+  }
+in evenodd('irrelevant).even(20)
