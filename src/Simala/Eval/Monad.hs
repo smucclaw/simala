@@ -196,7 +196,7 @@ withEnv env m = do
 
 initialEvalState :: EvalState
 initialEvalState =
-  MkEvalState emptyEnv emptyRevList Transparent
+  MkEvalState emptyEnv emptyRevList emptyRevList Transparent
 
 runEval :: Eval a -> (Either EvalError a, EvalTrace)
 runEval (MkEval m) =
@@ -204,3 +204,11 @@ runEval (MkEval m) =
     (simplifyEvalTrace . buildEvalTrace . unRevList . (.actions))
     (m initialEvalState)
 
+runEval' :: Eval a -> (Either EvalError a, [(Either EvalError Val, EvalTrace)])
+runEval' (MkEval m) =
+    (\( a, s ) ->
+      ( a
+      , unRevList $ s.traces
+      )
+    )
+    (m initialEvalState)

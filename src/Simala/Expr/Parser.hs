@@ -29,6 +29,10 @@ symbol :: Text -> Parser Text
 symbol =
   Lexer.symbol spaces
 
+directive :: Text -> Parser Text
+directive k =
+  Text.cons <$> char '#' <*> keyword k
+
 keyword :: Text -> Parser Text
 keyword k =
   (lexeme $ try $ do
@@ -216,8 +220,12 @@ builtins =
 
 decl :: Parser Decl
 decl =
-      NonRec <$> transparency <*> name <* symbol "=" <*> expr
+      Eval   <$  directive "eval" <*> expr
+  <|> NonRec <$> transparency <*> name <* symbol "=" <*> expr
   <|> Rec    <$  keyword "rec" <*> transparency <*> name <* symbol "=" <*> expr
+
+replEvalDecl :: Parser Decl
+replEvalDecl = Eval <$> expr
 
 decls :: Parser [Decl]
 decls =
@@ -226,7 +234,7 @@ decls =
 instruction :: Parser Instruction
 instruction =
       Declare                             <$> try decl
-  <|> Eval                                <$> expr
+  <|> Declare                             <$> try replEvalDecl
   <|> ReplCommand (SetTrace TraceFull)    <$  (symbol ":trace" <|> symbol ":t")
   <|> ReplCommand (SetTrace TraceResults) <$  (symbol ":results" <|> symbol ":r")
   <|> ReplCommand (SetTrace TraceOff)     <$  (symbol ":notrace" <|> symbol ":n")

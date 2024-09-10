@@ -1,5 +1,3 @@
-let a = { x = 2, y = 3 }
-in
-let b = { x = 'atom, z = 3 }
-in
-    merge(a, b)
+a = { x = 2, y = 3 };
+b = { x = 'atom, z = 3 };
+#eval merge(a, b)

@@ -14,13 +14,13 @@ type Name = Text
 data Decl =
     NonRec Transparency Name Expr
   | Rec    Transparency Name Expr
+  | Eval   Expr
   deriving stock Show
 
 -- | Repl instructions.
 --
 data Instruction =
     Declare Decl
-  | Eval Expr
   | ReplCommand ReplCommand
   | Noop
   deriving stock Show

@@ -8,6 +8,7 @@ import Simala.Expr.Type
 
 import System.Console.Haskeline
 
+
 data ReplState =
   MkReplState
     { env     :: !Env
@@ -95,10 +96,5 @@ handleInstruction continue i = do
       env <- getEnv
       f <- liftIO (doEvalDeclTracing t env d)
       setEnv (f env)
-      continue
-    Eval e -> do
-      t <- getTracing
-      env <- getEnv
-      liftIO (doEvalTracing t env e)
       continue
     Noop -> continue

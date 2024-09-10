@@ -1,3 +1,8 @@
+-- run this for example via:
+--
+-- cabal run -- simala examples/prelude.simala examples/mapfilterprelude.simala
+--
+#eval
 filter
   ( fun (x) => x % 2 == 0,
     map

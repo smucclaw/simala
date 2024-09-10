@@ -1,3 +1,4 @@
+#eval
 let `this is a variable` = 3 in
 let `this is another variable` = 22 in
 let `atoms can be quoted too` = '`see here` in
