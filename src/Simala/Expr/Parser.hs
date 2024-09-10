@@ -29,6 +29,10 @@ symbol :: Text -> Parser Text
 symbol =
   Lexer.symbol spaces
 
+directive :: Text -> Parser Text
+directive k =
+  Text.cons <$> char '#' <*> keyword k
+
 keyword :: Text -> Parser Text
 keyword k =
   (lexeme $ try $ do
@@ -220,7 +224,7 @@ builtins =
 
 decl :: Parser Decl
 decl =
-      Eval   <$  keyword "#eval" <*> expr
+      Eval   <$  directive "eval" <*> expr
   <|> NonRec <$> transparency <*> name <* symbol "=" <*> expr
   <|> Rec    <$  keyword "rec" <*> transparency <*> name <* symbol "=" <*> expr
 
