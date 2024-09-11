@@ -1,5 +1,5 @@
 -- run this for example via:
 --
--- cabal run -- simala examples/decisiondecl.simala examples/decisioninput.simala examples/decisionmain.simala
+-- cabal run -- simala examples/decisiondecl.simala examples/decisioninput.json examples/decisionmain.simala
 --
 #eval get_opinion(business, investor)
