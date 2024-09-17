@@ -4,56 +4,31 @@
 -- Generic encoding of transition systems
 -- not related to a particular case study
 
-{-# LANGUAGE  ExistentialQuantification #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeFamilies #-}
 module TransitionSystem (printAut, currAut)  where
 
+import Base hiding (State, lift)
+import qualified Base.Map as Map
+import qualified Data.Set as Set
 import Data.List ( intersperse )
-import Data.Map as M hiding (filter, foldr, map)
-import Data.Maybe (fromJust)
-import qualified Data.Set as S
 import Data.Graph.Inductive.Graph
 import Data.Graph.Inductive.PatriciaTree (Gr)
 import Data.GraphViz (runGraphviz, graphToDot, quickParams, Labellable)
 import Data.GraphViz.Commands (GraphvizOutput(..))
 import Prettyprinter
+import Simala.Eval.Monad
+import Simala.Expr.Evaluator
+import Simala.Expr.Render
+import Simala.Expr.Type
 
-newtype Loc = Loc {nameOfLoc :: String}
-  deriving (Eq, Ord, Show, Read)
-
-
-type Name = String  -- TODO: is Text in Simala
+newtype Loc = Loc {nameOfLoc :: Text}
+  deriving stock (Eq, Ord, Show, Read)
 
 type Var = Name
 type ChannelName = Name
-
--- copied from Simala
-data Lit =
-    IntLit     Int
-  | BoolLit    Bool           -- could also be done using two nullary built-ins
-  deriving (Eq, Ord, Show, Read)
-
--- partially copied from Simala
-data Builtin =
-    Minus      -- ^ subtraction, arity 2
-  | Sum        -- ^ sum, flexible arity
-  | Product    -- ^ product, flexible arity
-  | Not        -- ^ logical negation, arity 1
-  | Lt         -- ^ less-than, arity 2
-  | Le         -- ^ less-than-or-equal, arity 2
-  | Gt         -- ^ greater-than, arity 2
-  | Ge         -- ^ greater-than-or-equal, arity 2
-  | Eq         -- ^ equality (of Booleans, numbers or atoms), arity 2
-  | Ne         -- ^ inequality (of Booleans, numbers or atoms), arity 2
-  | And        -- ^ logical and, flexible arity
-  | Or         -- ^ logical or, flexible arity
-  deriving (Eq, Ord, Show, Read)
-
--- partially copied from Simala
-data Expr =
-    Builtin    Builtin [Expr]
-  | Var        Name
-  | Lit        Lit
-  deriving (Eq, Ord, Show, Read)
 
 -- some abbreviations
 
@@ -76,7 +51,7 @@ le :: Expr -> Expr -> Expr
 le e1 e2 = Builtin Le [e1, e2]
 
 data Cmd = VAssign Var Expr
-  deriving (Eq, Ord, Show, Read)
+  deriving stock Show
 
 type TransitionAction = [Cmd]
 
@@ -86,7 +61,7 @@ data Sync
   = NoSync                     -- sometimes called tau or epsilon transition
   | SendSync ChannelName       -- c!
   | RecvSync ChannelName       -- c?
-  deriving (Eq, Ord, Show, Read)
+  deriving stock (Eq, Show)
 
 isNoSync :: Sync -> Bool
 isNoSync NoSync = True
@@ -109,24 +84,24 @@ data Transition l = Transition {
   , actionOfTransition :: TransitionAction
   , targetOfTransition :: l
   }
-  deriving (Eq, Ord, Show, Read)
+  deriving Show
 
 
 data Aut l =
   Aut {
-      nameOfAut :: String
+      nameOfAut :: Text
     , locsOfAut :: [l]
     , transitionsOfAut :: [Transition l]
     , initialLocOfAut :: l
   }
-  deriving (Eq, Ord, Show, Read)
+  deriving Show
 
 data Sys l = Sys {
     declsOfSys :: [Var]
   , channelsOfSys :: [ChannelName]
   , automataOfSys :: [Aut l]
   }
-  deriving (Eq, Ord, Show, Read)
+  deriving Show
 
 
 transitionFromHere :: Eq l =>  Transition l -> l -> Bool
@@ -144,16 +119,16 @@ listProd =
 -- allowing a component automaton to remain in the same location.
 -- Internal transitions are always NoSync, external transitions can be either.
 data Visibility t = External t | Internal t
-  deriving (Eq, Ord, Show, Read)
+  deriving stock Show
 
 -- One (ProdLoc ls), with ls a list of locations, corresponds to one state of the product automaton
 -- The constructor ProdLoc is added for better visibility
 newtype ProdLoc l = ProdLoc [l]
-  deriving (Eq, Ord, Show, Read)
+  deriving stock Show
 
 -- A ProdTrans is a transition in the product automaton emanating from a ProdLoc
 newtype ProdTrans l = ProdTrans [Visibility (Transition l)]
-  deriving (Eq, Ord, Show, Read)
+  deriving stock Show
 
 noActTrans :: [l] -> [Visibility (Transition l)]
 noActTrans = map (\l -> Internal $ Transition l (bl True) NoSync [] l)
@@ -250,21 +225,21 @@ prodAut sys =
 -- Syntactic minimization: restriction to reachable locations
 ----------------------------------------------------------------------------------------
 
-transclos :: Ord a => (a -> S.Set a) -> S.Set a -> S.Set a
+transclos :: Ord a => (a -> Set a) -> Set a -> Set a
 transclos f xs =
-  let next = S.union xs (S.unions (S.map f xs))
-  in if S.isSubsetOf next xs then next else transclos f next
+  let next = Set.union xs (Set.unions (Set.map f xs))
+  in if Set.isSubsetOf next xs then next else transclos f next
 
-successors :: Ord l => [Transition l] -> l -> S.Set l
-successors trs l = S.fromList [targetOfTransition t | t <- trs, transitionFromHere t l]
+successors :: Ord l => [Transition l] -> l -> Set l
+successors trs l = Set.fromList [targetOfTransition t | t <- trs, transitionFromHere t l]
 
-restrictTrans :: Ord l => [Transition l] -> S.Set l -> [Transition l]
-restrictTrans trs reach = [t | t <- trs, S.member (sourceOfTransition t) reach]
+restrictTrans :: Ord l => [Transition l] -> Set l -> [Transition l]
+restrictTrans trs reach = [t | t <- trs, Set.member (sourceOfTransition t) reach]
 
 minAut :: Ord l => Aut l -> Aut l
 minAut aut =
-  let reach = transclos (successors (transitionsOfAut aut)) (S.singleton (initialLocOfAut aut))
-  in Aut (nameOfAut aut) (S.toList reach) (restrictTrans (transitionsOfAut aut) reach) (initialLocOfAut aut)
+  let reach = transclos (successors (transitionsOfAut aut)) (Set.singleton (initialLocOfAut aut))
+  in Aut (nameOfAut aut) (Set.toList reach) (restrictTrans (transitionsOfAut aut) reach) (initialLocOfAut aut)
 
 ----------------------------------------------------------------------------------------
 -- Semantics: Running automata
@@ -272,67 +247,33 @@ minAut aut =
 -- Semantics of running automata, and executing an automaton until a condition is satisfied.
 -- Unassigned variables are handled in a somewhat lax manner, see functions variableHasIntValS etc.
 
-data Val
-  = BoolVal Bool
-  | IntVal Int
-  deriving (Eq, Ord, Show, Read)
-
 
 -- State: a location and associated variable assignments
 data State l = State {
     currLoc :: l
   , assignments :: Map Var Val
   }
-  deriving (Eq, Ord, Show, Read)
+  deriving stock Show
 
 
 type FRStateContract l a b = (State l, a) -> Either String (State l, b)
 
 valOfLit :: Lit -> Val
-valOfLit (IntLit i) = IntVal i
-valOfLit (BoolLit b) = BoolVal b
-
-liftIntIntToInt :: (Int -> Int -> Int) -> Val -> Val -> Val
-liftIntIntToInt op (IntVal i1) (IntVal i2) = IntVal (op i1 i2)
-liftIntIntToInt _ _ _ = error "internal: liftIntIntToInt"
-
-liftBoolBoolToBool :: (Bool -> Bool -> Bool) -> Val -> Val -> Val
-liftBoolBoolToBool op (BoolVal b1) (BoolVal b2) = BoolVal (op b1 b2)
-liftBoolBoolToBool _ _ _ = error "internal: liftIntIntToInt"
-
-liftIntIntToBool :: (Int -> Int -> Bool) -> Val -> Val -> Val
-liftIntIntToBool op (IntVal i1) (IntVal i2) = BoolVal (op i1 i2)
-liftIntIntToBool _ _ _ = error "internal: liftIntIntToBool"
-
-liftBoolToBool :: (Bool -> Bool) -> Val -> Val
-liftBoolToBool op (BoolVal b) = BoolVal (op b)
-liftBoolToBool _ _ = error "internal: liftBoolToBool"
-
+valOfLit (IntLit i) = VInt i
+valOfLit (BoolLit b) = VBool b
 
 evalExpr :: Map Var Val -> Expr -> Val
-evalExpr assm (Var v) = fromJust (M.lookup v assm)
-evalExpr _ (Lit l) = valOfLit l
-evalExpr assm (Builtin Minus [e1, e2]) = liftIntIntToInt (-) (evalExpr assm e1) (evalExpr assm e2)
-evalExpr assm (Builtin Sum es) = foldr (liftIntIntToInt (+) . evalExpr assm) (IntVal 0) es
-evalExpr assm (Builtin Product es) = foldr (liftIntIntToInt (*) . evalExpr assm) (IntVal 1) es
-evalExpr assm (Builtin Not [e]) = liftBoolToBool not (evalExpr assm e)
-evalExpr assm (Builtin Lt [e1, e2]) = liftIntIntToBool (<) (evalExpr assm e1) (evalExpr assm e2)
-evalExpr assm (Builtin Le [e1, e2]) = liftIntIntToBool (<=) (evalExpr assm e1) (evalExpr assm e2)
-evalExpr assm (Builtin Gt [e1, e2]) = liftIntIntToBool (>) (evalExpr assm e1) (evalExpr assm e2)
-evalExpr assm (Builtin Ge [e1, e2]) = liftIntIntToBool (>=) (evalExpr assm e1) (evalExpr assm e2)
-evalExpr assm (Builtin Eq [e1, e2]) = liftIntIntToBool (==) (evalExpr assm e1) (evalExpr assm e2)
-evalExpr assm (Builtin Ne [e1, e2]) = liftIntIntToBool (/=) (evalExpr assm e1) (evalExpr assm e2)
-evalExpr assm (Builtin And es) = foldr (liftBoolBoolToBool (&&) . evalExpr assm) (BoolVal True) es
-evalExpr assm (Builtin Or es) = foldr (liftBoolBoolToBool (||) . evalExpr assm) (BoolVal False) es
-evalExpr _assm _ = error "internal: evalExpr"
-
+evalExpr env e =
+  case fst (runEval (withEnv env (eval e))) of
+    Left err -> error (show err)
+    Right x  -> x
 
 isTrue :: Val -> Bool
-isTrue (BoolVal b) = b
+isTrue (VBool b) = b
 isTrue _ = False
 
 initialState :: Aut l -> State l
-initialState a = State (initialLocOfAut a) M.empty
+initialState a = State (initialLocOfAut a) Map.empty
 
 evalGuard :: Map Var Val -> TransitionGuard -> Val
 evalGuard = evalExpr
@@ -341,7 +282,7 @@ enabledInState :: Transition l -> State l -> Bool
 enabledInState tr s = isTrue (evalGuard (assignments s) (guardOfTransition tr))
 
 execCmd :: Map Var Val -> Cmd -> Map Var Val
-execCmd assm (VAssign vr e) = M.insert vr (evalExpr assm e) assm
+execCmd assm (VAssign vr e) = Map.insert vr (evalExpr assm e) assm
 
 execAction :: Map Var Val -> TransitionAction -> Map Var Val
 execAction = Prelude.foldl execCmd
@@ -389,9 +330,9 @@ runAut a sol = bfs (stepTrace a) sol [initialTrace a]
 variableHasIntValS :: Var -> (Int -> Bool) -> State l -> Bool
 variableHasIntValS v p s =
   let test vl = case vl of
-                  IntVal i -> p i
+                  VInt i -> p i
                   _ -> False
-  in maybe False test (M.lookup v (assignments s))
+  in maybe False test (Map.lookup v (assignments s))
 
 variableHasIntValTr :: Var -> (Int -> Bool) -> Trace l -> Bool
 variableHasIntValTr v p (s, _) =  variableHasIntValS v p s
@@ -402,9 +343,9 @@ variableHasIntValTr v p (s, _) =  variableHasIntValS v p s
 variableHasBoolValS :: Var -> State l -> Bool
 variableHasBoolValS v s =
   let test vl = case vl of
-                  BoolVal b -> b
+                  VBool b -> b
                   _ -> False
-  in maybe False test (M.lookup v (assignments s))
+  in maybe False test (Map.lookup v (assignments s))
 
 variableHasBoolValTr :: Var -> Trace l -> Bool
 variableHasBoolValTr v (s, _) =  variableHasBoolValS v s
@@ -416,12 +357,10 @@ isInLocTr :: Eq l => l -> Trace l -> Bool
 isInLocTr l (s, _) = isInLocS l s
 
 -- >>> runAut autA (variableHasIntValTr "x" (>= 3))
--- [(State {currLoc = "l2A", assignments = fromList [("x",IntVal 3)]},[(Transition {sourceOfTransition = "l1A", guardOfTransition = Lit (BoolLit True), syncOfTransition = Just "c1", actionOfTransition = [VAssign "x" (Lit (IntLit 3))], targetOfTransition = "l2A"},State {currLoc = "l1A", assignments = fromList []})]),(State {currLoc = "l3A", assignments = fromList [("x",IntVal 4)]},[(Transition {sourceOfTransition = "l1A", guardOfTransition = Lit (BoolLit True), syncOfTransition = Nothing, actionOfTransition = [VAssign "x" (Lit (IntLit 4))], targetOfTransition = "l3A"},State {currLoc = "l1A", assignments = fromList []})])]
-
+-- [(State {currLoc = "l2A", assignments = fromList [("x",VInt 3)]},[(Transition {sourceOfTransition = "l1A", guardOfTransition = Lit (BoolLit True), syncOfTransition = SendSync "c1", actionOfTransition = [VAssign "x" (Lit (IntLit 3))], targetOfTransition = "l2A"},State {currLoc = "l1A", assignments = fromList []})]),(State {currLoc = "l3A", assignments = fromList [("x",VInt 4)]},[(Transition {sourceOfTransition = "l1A", guardOfTransition = Lit (BoolLit True), syncOfTransition = NoSync, actionOfTransition = [VAssign "x" (Lit (IntLit 4))], targetOfTransition = "l3A"},State {currLoc = "l1A", assignments = fromList []})])]
 
 -- >>> runAut (minAut (prodAut sysABC)) (variableHasIntValTr "x" (== 3))
--- [(State {currLoc = ["l2A","l2B","l1C"], assignments = fromList [("x",IntVal 3)]},[(Transition {sourceOfTransition = ["l1A","l1B","l1C"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = Just "c1", actionOfTransition = [VAssign "x" (Lit (IntLit 3))], targetOfTransition = ["l2A","l2B","l1C"]},State {currLoc = ["l1A","l1B","l1C"], assignments = fromList []})]),(State {currLoc = ["l2A","l2B","l2C"], assignments = fromList [("x",IntVal 3)]},[(Transition {sourceOfTransition = ["l1A","l1B","l2C"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = Just "c1", actionOfTransition = [VAssign "x" (Lit (IntLit 3))], targetOfTransition = ["l2A","l2B","l2C"]},State {currLoc = ["l1A","l1B","l2C"], assignments = fromList [("x",IntVal 5)]}),(Transition {sourceOfTransition = ["l1A","l1B","l1C"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = Nothing, actionOfTransition = [VAssign "x" (Lit (IntLit 5))], targetOfTransition = ["l1A","l1B","l2C"]},State {currLoc = ["l1A","l1B","l1C"], assignments = fromList []})])]
-
+-- [(State {currLoc = ["l2A","l2B","l1C"], assignments = fromList [("x",VInt 3)]},[(Transition {sourceOfTransition = ["l1A","l1B","l1C"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "c1", actionOfTransition = [VAssign "x" (Lit (IntLit 3))], targetOfTransition = ["l2A","l2B","l1C"]},State {currLoc = ["l1A","l1B","l1C"], assignments = fromList []})]),(State {currLoc = ["l2A","l2B","l2C"], assignments = fromList [("x",VInt 3)]},[(Transition {sourceOfTransition = ["l1A","l1B","l2C"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "c1", actionOfTransition = [VAssign "x" (Lit (IntLit 3))], targetOfTransition = ["l2A","l2B","l2C"]},State {currLoc = ["l1A","l1B","l2C"], assignments = fromList [("x",VInt 5)]}),(Transition {sourceOfTransition = ["l1A","l1B","l1C"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = NoSync, actionOfTransition = [VAssign "x" (Lit (IntLit 5))], targetOfTransition = ["l1A","l1B","l2C"]},State {currLoc = ["l1A","l1B","l1C"], assignments = fromList []})])]
 
 ----------------------------------------------------------------------------------------
 -- CTL*
@@ -507,18 +446,17 @@ data UpCTLSearchState l = UpCTLSearchState {
      upctlResult :: SearchResult
   ,  upctlTrace :: Trace l
 }
-  deriving (Eq, Ord, Show, Read)
+  deriving stock Show
 
 data SearchResult = Valid | Invalid | Inconclusive
-  deriving (Eq, Ord, Show, Read)
+  deriving stock (Eq, Show)
 
 
 upform :: PQuantif -> SQuantif -> b -> UpCTLForm b
 upform pq sq b = UpCTLQuant pq sq (UpCTLBasic b)
 
 -- >>> runUpctlSearch autA 2 (upform A F (variableHasIntValS "x" (>= 3)))
--- UpCTLSearchState {upctlResult = Valid, upctlTrace = (State {currLoc = "l2A", assignments = fromList [("x",IntVal 3)]},[(Transition {sourceOfTransition = "l1A", guardOfTransition = Lit (BoolLit True), syncOfTransition = SendSync "c1", actionOfTransition = [VAssign "x" (Lit (IntLit 3))], targetOfTransition = "l2A"},State {currLoc = "l1A", assignments = fromList []})])}
-
+-- UpCTLSearchState {upctlResult = Valid, upctlTrace = (State {currLoc = "l2A", assignments = fromList [("x",VInt 3)]},[(Transition {sourceOfTransition = "l1A", guardOfTransition = Lit (BoolLit True), syncOfTransition = SendSync "c1", actionOfTransition = [VAssign "x" (Lit (IntLit 3))], targetOfTransition = "l2A"},State {currLoc = "l1A", assignments = fromList []})])}
 
 -- >>> runUpctlSearch (minAut (prodAut sysABC)) 4 (upform A G (variableHasIntValS "x" (>= 3)))
 -- UpCTLSearchState {upctlResult = Invalid, upctlTrace = (State {currLoc = ["l1A","l1B","l1C"], assignments = fromList []},[])}
@@ -611,12 +549,12 @@ autToDot ninfo einfo aut = do
 nameProdAut :: [Name] -> Name
 nameProdAut = foldr (<>)  "" . Data.List.intersperse "_"
 
-edgeLabelAut :: Transition l -> String
+edgeLabelAut :: Transition l -> Text
 edgeLabelAut tr =
   case syncOfTransition tr of
     NoSync -> ""
-    SendSync c -> c ++ "!"
-    RecvSync c -> c ++ "?"
+    SendSync c -> c <> "!"
+    RecvSync c -> c <> "?"
 
 -- >>> autToDot id edgeLabelAut autA
 -- "compactPropGraph.pdf"
@@ -680,32 +618,10 @@ instance ShowLabel l => ShowLabel [l] where
   showLabelList ss = foldr (<>)  "" (Data.List.intersperse "_" (map showLabel ss))
 
 class ShowImp x where
-    showImp :: x -> Doc ann
-
-instance ShowImp Lit where
-  showImp (IntLit i) = pretty (show i)
-  showImp (BoolLit b) = pretty (show b)
-
-instance ShowImp Builtin where
-  showImp Minus = pretty "-"
-  showImp Sum = pretty "+"
-  showImp Product = pretty "+"
-  showImp Not = pretty "!"
-  showImp Lt = pretty "<"
-  showImp Le = pretty "<="
-  showImp Gt = pretty ">"
-  showImp Ge = pretty ">="
-  showImp Eq = pretty "=="
-  showImp Ne = pretty "!="
-  showImp And = pretty "&&"
-  showImp Or = pretty "||"
+  showImp :: x -> Doc ann
 
 instance ShowImp Expr where
-  showImp (Var v) = pretty v
-  showImp (Lit l) = showImp l
-  showImp (Builtin Not [e]) = showImp Not <+> showImp e   -- assuming this is a prefix unary
-  showImp (Builtin b [e1, e2]) = showImp e1 <+> showImp b <+> showImp e2
-  showImp (Builtin b es) = showImp (normalizeExpr b es)
+  showImp e = pretty (render e)
 
 normalizeExpr :: Builtin -> [Expr] -> Expr
 normalizeExpr Sum [] = il 0
@@ -720,66 +636,66 @@ nestingDepth :: Int
 nestingDepth = 4
 
 instance ShowLabel l => ShowImp (Imp l) where
-  showImp (Assign v e) = pretty v <+> pretty "=" <+> showImp e <+> pretty ";"
-  showImp (Goto l) = pretty "goto" <+> pretty (showLabel l) <+> pretty ";"
-  showImp (IfThen e imp) = pretty "if" <+> parens (showImp e) <+> braces (nest nestingDepth (line <> align (showImp imp)))
-  showImp (Labeled l imp) = pretty (showLabel l) <+> pretty ":" <+> line <> showImp imp <+> pretty ";"
+  showImp (Assign v e) = pretty v <+> "=" <+> showImp e <+> ";"
+  showImp (Goto l) = "goto" <+> pretty (showLabel l) <+> ";"
+  showImp (IfThen e imp) = "if" <+> parens (showImp e) <+> braces (nest nestingDepth (line <> align (showImp imp)))
+  showImp (Labeled l imp) = pretty (showLabel l) <+> ":" <+> line <> showImp imp <+> ";"
   showImp (Seq imps) = vsep (map showImp imps)
 
-printAut :: (ShowLabel l, Eq l) => Aut l -> IO()
+printAut :: (ShowLabel l, Eq l) => Aut l -> IO ()
 printAut a = print (showImp (autToImp a))
 
 ----------------------------------------------------------------------------------------
 -- Some tests
 ----------------------------------------------------------------------------------------
 
-transA :: [Transition String]
+transA :: [Transition Text]
 transA = [ Transition "l1A" (bl True) (SendSync "c1") [VAssign "x" (il 3)] "l2A"
          , Transition "l1A" (bl True) NoSync [VAssign "x" (il 4)] "l3A"
          ]
-autA :: Aut String
+autA :: Aut Text
 autA = Aut "autA" ["l1A", "l2A", "l3A"] transA "l1A"
 
-transAm :: [Transition String]
+transAm :: [Transition Text]
 transAm = [ Transition "l1A" (bl True) (SendSync "c1") [] "l2A"
          ,  Transition "l1A" (bl True) (SendSync "c2") [] "l3A"
          ]
-autAm :: Aut String
+autAm :: Aut Text
 autAm = Aut "autA" ["l1A", "l2A", "l3A"] transAm "l1A"
 
-transB :: [Transition String]
+transB :: [Transition Text]
 transB = [ Transition "l1B" (bl True) (RecvSync "c1") [] "l2B"
          ]
-autB :: Aut String
+autB :: Aut Text
 autB = Aut "autB" ["l1B", "l2B"] transB "l1B"
 
-transC :: [Transition String]
+transC :: [Transition Text]
 transC = [ Transition "l1C" (bl True) NoSync [VAssign "x" (il 5)] "l2C"
          ]
 
-autC :: Aut String
+autC :: Aut Text
 autC = Aut "autC" ["l1C", "l2C"] transC "l1C"
 
-sysAB :: Sys String
+sysAB :: Sys Text
 sysAB = Sys ["x"] ["c1", "c2"] [autA, autB]
 
-sysABm :: Sys String
+sysABm :: Sys Text
 sysABm = Sys ["x"] ["c1", "c2"] [autAm, autB]
 
-sysABC :: Sys String
+sysABC :: Sys Text
 sysABC = Sys ["x"] ["c1", "c2"] [autA, autB, autC]
 
 -- >>> autToDot nameProdAut edgeLabelAut currAut
 -- "compactPropGraph.pdf"
 
 -- >>> minAut (prodAut sysABm)
--- Aut {nameOfAut = "prod", locsOfAut = [["l1A","l1B"],["l2A","l2B"],["l3A","l1B"],["l3A","l2B"]], transitionsOfAut = [Transition {sourceOfTransition = ["l1A","l1B"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = Just "c1", actionOfTransition = [], targetOfTransition = ["l2A","l2B"]},Transition {sourceOfTransition = ["l1A","l1B"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = Just "c2", actionOfTransition = [], targetOfTransition = ["l3A","l1B"]},Transition {sourceOfTransition = ["l3A","l1B"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = Just "c1", actionOfTransition = [], targetOfTransition = ["l3A","l2B"]}], initialLocOfAut = ["l1A","l1B"]}
+-- Aut {nameOfAut = "autA_autB", locsOfAut = [["l1A","l1B"],["l2A","l2B"],["l3A","l1B"]], transitionsOfAut = [Transition {sourceOfTransition = ["l1A","l1B"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "c1", actionOfTransition = [], targetOfTransition = ["l2A","l2B"]},Transition {sourceOfTransition = ["l1A","l1B"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "c2", actionOfTransition = [], targetOfTransition = ["l3A","l1B"]}], initialLocOfAut = ["l1A","l1B"]}
 
 ----------------------------------------------------------------------------------------
 -- Company purchase case study
 ----------------------------------------------------------------------------------------
 
-companyAut :: Aut String
+companyAut :: Aut Text
 companyAut = Aut {
     nameOfAut = "Company"
   , locsOfAut = ["independent", "acquisitionInCourse", "sold"]
@@ -791,7 +707,7 @@ companyAut = Aut {
   , initialLocOfAut = "independent"
 }
 
-masAut :: Aut String
+masAut :: Aut Text
 masAut = Aut {
     nameOfAut = "MAS"
   , locsOfAut = ["masInit", "masConsulted"]
@@ -803,7 +719,7 @@ masAut = Aut {
   , initialLocOfAut = "masInit"
 }
 
-trPStartAcquisition :: Transition String
+trPStartAcquisition :: Transition Text
 trPStartAcquisition = Transition{
     sourceOfTransition = "pInit"
   , guardOfTransition = bl True
@@ -818,7 +734,7 @@ trPStartAcquisition = Transition{
   , targetOfTransition = "pLoopHead"
   }
 
-purchaserAut :: Aut String
+purchaserAut :: Aut Text
 purchaserAut = Aut {
     nameOfAut = "Purchaser"
   , locsOfAut = ["pInit", "pLoopHead", "pPermissionRequested", "pPermissionRefused",
@@ -840,7 +756,7 @@ purchaserAut = Aut {
 -- >>> autToDot id edgeLabelAut purchaserAut
 -- "compactPropGraph.pdf"
 
-sysCompanyPurchase :: Sys String
+sysCompanyPurchase :: Sys Text
 sysCompanyPurchase = Sys {
     declsOfSys = ["controlled", "paymentComplete", "debt", "installment", "interest"]
   , channelsOfSys = ["requestPermission", "grantPermission", "refusePermission",
@@ -848,7 +764,7 @@ sysCompanyPurchase = Sys {
   , automataOfSys = [companyAut, masAut, purchaserAut]
   }
 
-minSysCompanyPurchase :: Aut [String]
+minSysCompanyPurchase :: Aut [Text]
 minSysCompanyPurchase = minAut (prodAut sysCompanyPurchase)
 
 -- >>> length (locsOfAut minSysCompanyPurchase)
@@ -858,11 +774,11 @@ minSysCompanyPurchase = minAut (prodAut sysCompanyPurchase)
 -- "compactPropGraph.pdf"
 
 -- >>> runUpctlSearch minSysCompanyPurchase 20 (upform E F (variableHasBoolValS "paymentComplete"))
--- UpCTLSearchState {upctlResult = Valid, upctlTrace = (State {currLoc = ["acquisitionInCourse","masInit","pPaymentDone"], assignments = fromList [("controlled",BoolVal True),("debt",IntVal (-20)),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal True)]},[(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pCheckDebt"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Builtin Le [Var "debt",Lit (IntLit 0)]], syncOfTransition = NoSync, actionOfTransition = [VAssign "paymentComplete" (Lit (BoolLit True)),VAssign "controlled" (Lit (BoolLit True))], targetOfTransition = ["acquisitionInCourse","masInit","pPaymentDone"]},State {currLoc = ["acquisitionInCourse","masInit","pCheckDebt"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal (-20)),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pPermissionGranted"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "payment", actionOfTransition = [VAssign "debt" (Builtin Minus [Var "debt",Var "installment"])], targetOfTransition = ["acquisitionInCourse","masInit","pCheckDebt"]},State {currLoc = ["acquisitionInCourse","masInit","pPermissionGranted"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 20),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "grantPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masInit","pPermissionGranted"]},State {currLoc = ["acquisitionInCourse","masConsulted","pPermissionRequested"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 20),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pLoopHead"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "requestPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"]},State {currLoc = ["acquisitionInCourse","masInit","pLoopHead"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 20),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pCheckDebt"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Builtin Gt [Var "debt",Lit (IntLit 0)]], syncOfTransition = NoSync, actionOfTransition = [VAssign "debt" (Builtin Sum [Var "debt",Var "interest"])], targetOfTransition = ["acquisitionInCourse","masInit","pLoopHead"]},State {currLoc = ["acquisitionInCourse","masInit","pCheckDebt"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 20),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pPermissionGranted"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "payment", actionOfTransition = [VAssign "debt" (Builtin Minus [Var "debt",Var "installment"])], targetOfTransition = ["acquisitionInCourse","masInit","pCheckDebt"]},State {currLoc = ["acquisitionInCourse","masInit","pPermissionGranted"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 60),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "grantPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masInit","pPermissionGranted"]},State {currLoc = ["acquisitionInCourse","masConsulted","pPermissionRequested"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 60),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pLoopHead"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "requestPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"]},State {currLoc = ["acquisitionInCourse","masInit","pLoopHead"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 60),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pCheckDebt"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Builtin Gt [Var "debt",Lit (IntLit 0)]], syncOfTransition = NoSync, actionOfTransition = [VAssign "debt" (Builtin Sum [Var "debt",Var "interest"])], targetOfTransition = ["acquisitionInCourse","masInit","pLoopHead"]},State {currLoc = ["acquisitionInCourse","masInit","pCheckDebt"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 60),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pPermissionGranted"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "payment", actionOfTransition = [VAssign "debt" (Builtin Minus [Var "debt",Var "installment"])], targetOfTransition = ["acquisitionInCourse","masInit","pCheckDebt"]},State {currLoc = ["acquisitionInCourse","masInit","pPermissionGranted"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 100),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "grantPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masInit","pPermissionGranted"]},State {currLoc = ["acquisitionInCourse","masConsulted","pPermissionRequested"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 100),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pLoopHead"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "requestPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"]},State {currLoc = ["acquisitionInCourse","masInit","pLoopHead"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 100),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["independent","masInit","pInit"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "startAcquisition", actionOfTransition = [VAssign "controlled" (Lit (BoolLit False)),VAssign "paymentComplete" (Lit (BoolLit False)),VAssign "debt" (Lit (IntLit 100)),VAssign "installment" (Lit (IntLit 40)),VAssign "interest" (Lit (IntLit 0))], targetOfTransition = ["acquisitionInCourse","masInit","pLoopHead"]},State {currLoc = ["independent","masInit","pInit"], assignments = fromList []})])}
+-- UpCTLSearchState {upctlResult = Valid, upctlTrace = (State {currLoc = ["acquisitionInCourse","masInit","pPaymentDone"], assignments = fromList [("controlled",VBool True),("debt",VInt (-20)),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool True)]},[(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pCheckDebt"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Builtin Le [Var "debt",Lit (IntLit 0)]], syncOfTransition = NoSync, actionOfTransition = [VAssign "paymentComplete" (Lit (BoolLit True)),VAssign "controlled" (Lit (BoolLit True))], targetOfTransition = ["acquisitionInCourse","masInit","pPaymentDone"]},State {currLoc = ["acquisitionInCourse","masInit","pCheckDebt"], assignments = fromList [("controlled",VBool False),("debt",VInt (-20)),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pPermissionGranted"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "payment", actionOfTransition = [VAssign "debt" (Builtin Minus [Var "debt",Var "installment"])], targetOfTransition = ["acquisitionInCourse","masInit","pCheckDebt"]},State {currLoc = ["acquisitionInCourse","masInit","pPermissionGranted"], assignments = fromList [("controlled",VBool False),("debt",VInt 20),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "grantPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masInit","pPermissionGranted"]},State {currLoc = ["acquisitionInCourse","masConsulted","pPermissionRequested"], assignments = fromList [("controlled",VBool False),("debt",VInt 20),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pLoopHead"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "requestPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"]},State {currLoc = ["acquisitionInCourse","masInit","pLoopHead"], assignments = fromList [("controlled",VBool False),("debt",VInt 20),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pCheckDebt"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Builtin Gt [Var "debt",Lit (IntLit 0)]], syncOfTransition = NoSync, actionOfTransition = [VAssign "debt" (Builtin Sum [Var "debt",Var "interest"])], targetOfTransition = ["acquisitionInCourse","masInit","pLoopHead"]},State {currLoc = ["acquisitionInCourse","masInit","pCheckDebt"], assignments = fromList [("controlled",VBool False),("debt",VInt 20),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pPermissionGranted"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "payment", actionOfTransition = [VAssign "debt" (Builtin Minus [Var "debt",Var "installment"])], targetOfTransition = ["acquisitionInCourse","masInit","pCheckDebt"]},State {currLoc = ["acquisitionInCourse","masInit","pPermissionGranted"], assignments = fromList [("controlled",VBool False),("debt",VInt 60),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "grantPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masInit","pPermissionGranted"]},State {currLoc = ["acquisitionInCourse","masConsulted","pPermissionRequested"], assignments = fromList [("controlled",VBool False),("debt",VInt 60),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pLoopHead"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "requestPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"]},State {currLoc = ["acquisitionInCourse","masInit","pLoopHead"], assignments = fromList [("controlled",VBool False),("debt",VInt 60),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pCheckDebt"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Builtin Gt [Var "debt",Lit (IntLit 0)]], syncOfTransition = NoSync, actionOfTransition = [VAssign "debt" (Builtin Sum [Var "debt",Var "interest"])], targetOfTransition = ["acquisitionInCourse","masInit","pLoopHead"]},State {currLoc = ["acquisitionInCourse","masInit","pCheckDebt"], assignments = fromList [("controlled",VBool False),("debt",VInt 60),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pPermissionGranted"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "payment", actionOfTransition = [VAssign "debt" (Builtin Minus [Var "debt",Var "installment"])], targetOfTransition = ["acquisitionInCourse","masInit","pCheckDebt"]},State {currLoc = ["acquisitionInCourse","masInit","pPermissionGranted"], assignments = fromList [("controlled",VBool False),("debt",VInt 100),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "grantPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masInit","pPermissionGranted"]},State {currLoc = ["acquisitionInCourse","masConsulted","pPermissionRequested"], assignments = fromList [("controlled",VBool False),("debt",VInt 100),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pLoopHead"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "requestPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"]},State {currLoc = ["acquisitionInCourse","masInit","pLoopHead"], assignments = fromList [("controlled",VBool False),("debt",VInt 100),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["independent","masInit","pInit"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "startAcquisition", actionOfTransition = [VAssign "controlled" (Lit (BoolLit False)),VAssign "paymentComplete" (Lit (BoolLit False)),VAssign "debt" (Lit (IntLit 100)),VAssign "installment" (Lit (IntLit 40)),VAssign "interest" (Lit (IntLit 0))], targetOfTransition = ["acquisitionInCourse","masInit","pLoopHead"]},State {currLoc = ["independent","masInit","pInit"], assignments = fromList []})])}
 
 -- >>> runUpctlSearch minSysCompanyPurchase 20 (upform A F (variableHasBoolValS "paymentComplete"))
--- UpCTLSearchState {upctlResult = Invalid, upctlTrace = (State {currLoc = ["acquisitionInCourse","masInit","pPermissionRefused"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 20),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]},[(Transition {sourceOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "refusePermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masInit","pPermissionRefused"]},State {currLoc = ["acquisitionInCourse","masConsulted","pPermissionRequested"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 20),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pLoopHead"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "requestPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"]},State {currLoc = ["acquisitionInCourse","masInit","pLoopHead"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 20),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pCheckDebt"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Builtin Gt [Var "debt",Lit (IntLit 0)]], syncOfTransition = NoSync, actionOfTransition = [VAssign "debt" (Builtin Sum [Var "debt",Var "interest"])], targetOfTransition = ["acquisitionInCourse","masInit","pLoopHead"]},State {currLoc = ["acquisitionInCourse","masInit","pCheckDebt"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 20),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pPermissionGranted"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "payment", actionOfTransition = [VAssign "debt" (Builtin Minus [Var "debt",Var "installment"])], targetOfTransition = ["acquisitionInCourse","masInit","pCheckDebt"]},State {currLoc = ["acquisitionInCourse","masInit","pPermissionGranted"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 60),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "grantPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masInit","pPermissionGranted"]},State {currLoc = ["acquisitionInCourse","masConsulted","pPermissionRequested"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 60),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pLoopHead"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "requestPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"]},State {currLoc = ["acquisitionInCourse","masInit","pLoopHead"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 60),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pCheckDebt"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Builtin Gt [Var "debt",Lit (IntLit 0)]], syncOfTransition = NoSync, actionOfTransition = [VAssign "debt" (Builtin Sum [Var "debt",Var "interest"])], targetOfTransition = ["acquisitionInCourse","masInit","pLoopHead"]},State {currLoc = ["acquisitionInCourse","masInit","pCheckDebt"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 60),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pPermissionGranted"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "payment", actionOfTransition = [VAssign "debt" (Builtin Minus [Var "debt",Var "installment"])], targetOfTransition = ["acquisitionInCourse","masInit","pCheckDebt"]},State {currLoc = ["acquisitionInCourse","masInit","pPermissionGranted"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 100),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "grantPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masInit","pPermissionGranted"]},State {currLoc = ["acquisitionInCourse","masConsulted","pPermissionRequested"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 100),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pLoopHead"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "requestPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"]},State {currLoc = ["acquisitionInCourse","masInit","pLoopHead"], assignments = fromList [("controlled",BoolVal False),("debt",IntVal 100),("installment",IntVal 40),("interest",IntVal 0),("paymentComplete",BoolVal False)]}),(Transition {sourceOfTransition = ["independent","masInit","pInit"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "startAcquisition", actionOfTransition = [VAssign "controlled" (Lit (BoolLit False)),VAssign "paymentComplete" (Lit (BoolLit False)),VAssign "debt" (Lit (IntLit 100)),VAssign "installment" (Lit (IntLit 40)),VAssign "interest" (Lit (IntLit 0))], targetOfTransition = ["acquisitionInCourse","masInit","pLoopHead"]},State {currLoc = ["independent","masInit","pInit"], assignments = fromList []})])}
+-- UpCTLSearchState {upctlResult = Invalid, upctlTrace = (State {currLoc = ["acquisitionInCourse","masInit","pPermissionRefused"], assignments = fromList [("controlled",VBool False),("debt",VInt 20),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]},[(Transition {sourceOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "refusePermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masInit","pPermissionRefused"]},State {currLoc = ["acquisitionInCourse","masConsulted","pPermissionRequested"], assignments = fromList [("controlled",VBool False),("debt",VInt 20),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pLoopHead"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "requestPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"]},State {currLoc = ["acquisitionInCourse","masInit","pLoopHead"], assignments = fromList [("controlled",VBool False),("debt",VInt 20),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pCheckDebt"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Builtin Gt [Var "debt",Lit (IntLit 0)]], syncOfTransition = NoSync, actionOfTransition = [VAssign "debt" (Builtin Sum [Var "debt",Var "interest"])], targetOfTransition = ["acquisitionInCourse","masInit","pLoopHead"]},State {currLoc = ["acquisitionInCourse","masInit","pCheckDebt"], assignments = fromList [("controlled",VBool False),("debt",VInt 20),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pPermissionGranted"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "payment", actionOfTransition = [VAssign "debt" (Builtin Minus [Var "debt",Var "installment"])], targetOfTransition = ["acquisitionInCourse","masInit","pCheckDebt"]},State {currLoc = ["acquisitionInCourse","masInit","pPermissionGranted"], assignments = fromList [("controlled",VBool False),("debt",VInt 60),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "grantPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masInit","pPermissionGranted"]},State {currLoc = ["acquisitionInCourse","masConsulted","pPermissionRequested"], assignments = fromList [("controlled",VBool False),("debt",VInt 60),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pLoopHead"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "requestPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"]},State {currLoc = ["acquisitionInCourse","masInit","pLoopHead"], assignments = fromList [("controlled",VBool False),("debt",VInt 60),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pCheckDebt"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Builtin Gt [Var "debt",Lit (IntLit 0)]], syncOfTransition = NoSync, actionOfTransition = [VAssign "debt" (Builtin Sum [Var "debt",Var "interest"])], targetOfTransition = ["acquisitionInCourse","masInit","pLoopHead"]},State {currLoc = ["acquisitionInCourse","masInit","pCheckDebt"], assignments = fromList [("controlled",VBool False),("debt",VInt 60),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pPermissionGranted"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "payment", actionOfTransition = [VAssign "debt" (Builtin Minus [Var "debt",Var "installment"])], targetOfTransition = ["acquisitionInCourse","masInit","pCheckDebt"]},State {currLoc = ["acquisitionInCourse","masInit","pPermissionGranted"], assignments = fromList [("controlled",VBool False),("debt",VInt 100),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "grantPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masInit","pPermissionGranted"]},State {currLoc = ["acquisitionInCourse","masConsulted","pPermissionRequested"], assignments = fromList [("controlled",VBool False),("debt",VInt 100),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["acquisitionInCourse","masInit","pLoopHead"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "requestPermission", actionOfTransition = [], targetOfTransition = ["acquisitionInCourse","masConsulted","pPermissionRequested"]},State {currLoc = ["acquisitionInCourse","masInit","pLoopHead"], assignments = fromList [("controlled",VBool False),("debt",VInt 100),("installment",VInt 40),("interest",VInt 0),("paymentComplete",VBool False)]}),(Transition {sourceOfTransition = ["independent","masInit","pInit"], guardOfTransition = Builtin And [Lit (BoolLit True),Lit (BoolLit True),Lit (BoolLit True)], syncOfTransition = SendSync "startAcquisition", actionOfTransition = [VAssign "controlled" (Lit (BoolLit False)),VAssign "paymentComplete" (Lit (BoolLit False)),VAssign "debt" (Lit (IntLit 100)),VAssign "installment" (Lit (IntLit 40)),VAssign "interest" (Lit (IntLit 0))], targetOfTransition = ["acquisitionInCourse","masInit","pLoopHead"]},State {currLoc = ["independent","masInit","pInit"], assignments = fromList []})])}
 
 
-currAut :: Aut [String]
+currAut :: Aut [Text]
 currAut = minSysCompanyPurchase

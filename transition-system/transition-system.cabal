@@ -15,6 +15,7 @@ library
     containers,
     fgl,
     graphviz,
-    prettyprinter
+    prettyprinter,
+    simala
   exposed-modules:
     TransitionSystem
