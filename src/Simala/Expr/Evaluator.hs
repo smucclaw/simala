@@ -209,6 +209,15 @@ evalBuiltin Eq exprs = do
     (\ i1 i2 -> pure (VBool (i1 == i2)))
     (\ b1 b2 -> pure (VBool (b1 == b2)))
     (\ x1 x2 -> pure (VBool (x1 == x2)))
+evalBuiltin HEq exprs = do
+  (e1, e2) <- expectArity2 exprs
+  v1 <- eval e1
+  v2 <- eval e2
+  case (v1, v2) of
+    (VInt i1, VInt i2) -> pure (VBool (i1 == i2))
+    (VBool b1, VBool b2) -> pure (VBool (b1 == b2))
+    (VAtom a1, VAtom a2) -> pure (VBool (a1 == a2))
+    (_, _) -> pure (VBool False)
 evalBuiltin Ne exprs = do
   expect2IntsOrBoolsOrAtoms exprs
     (\ i1 i2 -> pure (VBool (i1 /= i2)))

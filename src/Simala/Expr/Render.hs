@@ -88,6 +88,7 @@ renderBuiltin p Le         [e1, e2]     = renderBinop  4 " <= " p e1 e2
 renderBuiltin p Gt         [e1, e2]     = renderBinop  4 " > "  p e1 e2
 renderBuiltin p Lt         [e1, e2]     = renderBinop  4 " < "  p e1 e2
 renderBuiltin p Eq         [e1, e2]     = renderBinop  4 " == " p e1 e2
+renderBuiltin p HEq        [e1, e2]     = renderBinop  4 " ~= " p e1 e2
 renderBuiltin p Ne         [e1, e2]     = renderBinop  4 " /= " p e1 e2
 renderBuiltin p And        [e1, e2]     = renderBinopr 3 " && " p e1 e2
 renderBuiltin p Or         [e1, e2]     = renderBinopr 2 " || " p e1 e2
@@ -123,6 +124,7 @@ instance Render Builtin where
   render Gt         = "gt"
   render Ge         = "ge"
   render Eq         = "eq"
+  render HEq        = "heq"
   render Ne         = "ne"
   render And        = "and"
   render Or         = "or"

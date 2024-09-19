@@ -79,6 +79,7 @@ data Builtin =
   | Gt         -- ^ greater-than, arity 2
   | Ge         -- ^ greater-than-or-equal, arity 2
   | Eq         -- ^ equality (of Booleans, numbers or atoms), arity 2
+  | HEq        -- ^ heterogeneous equality, arity 2 (will never crash, but return false on unsuported or different types)
   | Ne         -- ^ inequality (of Booleans, numbers or atoms), arity 2
   | And        -- ^ logical and, flexible arity
   | Or         -- ^ logical or, flexible arity
