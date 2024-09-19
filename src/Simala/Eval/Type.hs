@@ -37,7 +37,7 @@ newtype Eval a =
 
 data EvalError =
     ArityError Int Int -- expected, observed
-  | TypeError ValTy ValTy -- expected, observed
+  | TypeError [ValTy] ValTy -- expected one of, observed
   | ScopeError Name
   | DivByZero
   | EmptyListError

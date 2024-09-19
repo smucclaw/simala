@@ -75,7 +75,7 @@ simplifyEvalTrace t@(Trace mn e subs v) =
 arityError :: Int -> Int -> Eval a
 arityError ae ao = raise (ArityError ae ao)
 
-typeError :: ValTy -> ValTy -> Eval a
+typeError :: [ValTy] -> ValTy -> Eval a
 typeError tye tyo = raise (TypeError tye tyo)
 
 scopeError :: Name -> Eval a
@@ -116,27 +116,35 @@ look n = do
 
 expectBool :: Val -> Eval Bool -- fails if type-incorrect
 expectBool (VBool b) = pure b
-expectBool v         = typeError TBool (valTy v)
+expectBool v         = typeError [TBool] (valTy v)
 
 expectInt :: Val -> Eval Int -- fails if type-incorrect
 expectInt (VInt i) = pure i
-expectInt v        = typeError TInt (valTy v)
+expectInt v        = typeError [TInt] (valTy v)
+
+expectFrac :: Val -> Eval Double -- fails if type-incorrect
+expectFrac (VFrac f) = pure f
+expectFrac v         = typeError [TFrac] (valTy v)
+
+expectString :: Val -> Eval Text -- fails if type-incorrect
+expectString (VString s) = pure s
+expectString v           = typeError [TString] (valTy v)
 
 expectAtom :: Val -> Eval Name -- fails if type-incorrect
 expectAtom (VAtom x) = pure x
-expectAtom v         = typeError TAtom (valTy v)
+expectAtom v         = typeError [TAtom] (valTy v)
 
 expectFunction :: Val -> Eval Closure
 expectFunction (VClosure c) = pure c
-expectFunction v            = typeError TFun (valTy v)
+expectFunction v            = typeError [TFun] (valTy v)
 
 expectList :: Val -> Eval [Val]
 expectList (VList vs) = pure vs
-expectList v          = typeError TList (valTy v)
+expectList v          = typeError [TList] (valTy v)
 
 expectRecord :: Val -> Eval (Row Val)
 expectRecord (VRecord r) = pure r
-expectRecord v           = typeError TRecord (valTy v)
+expectRecord v           = typeError [TRecord] (valTy v)
 
 expectArity3 :: [a] -> Eval (a, a, a) -- fails if wrong length
 expectArity3 [e1, e2, e3] = pure (e1, e2, e3)

@@ -61,7 +61,9 @@ data Transparency =
 
 data Lit =
     IntLit     Int
+  | FracLit    Double         -- fractional literal, TODO: not sure if we want IEEE semantics
   | BoolLit    Bool           -- could also be done using two nullary built-ins
+  | StringLit  Text
   deriving stock Show
 
 -- | Builtin operations.
@@ -88,6 +90,11 @@ data Builtin =
   | Foldr      -- ^ right fold, arity 3
   | Case       -- ^ case on lists, arity 3
   | Merge      -- ^ Merge two records, arity 2
+  | Floor      -- ^ Round down a fractional to the nearest integer, arity 1
+  | Ceiling    -- ^ Round up a fractional to the nearest integer, arity 1
+  | FromInt    -- ^ Convert an integer to a fractional, arity 1
+  | Explode    -- ^ Explode a string into a list of single-character strings, arity 1
+  | Append     -- ^ Append two strings, arity 2
   deriving stock Show
 
 -- | A value.
@@ -95,6 +102,8 @@ data Builtin =
 data Val =
     VInt  Int          -- ^ integer value
   | VBool Bool         -- ^ boolean value
+  | VString Text       -- ^ string value
+  | VFrac Double       -- ^ fractional value
   | VList [Val]        -- ^ fully evaluated list
   | VRecord (Row Val)  -- ^ fully evaluated record
   | VClosure Closure   -- ^ closure / suspended function
@@ -110,6 +119,8 @@ data Val =
 data ValTy =
     TInt
   | TBool
+  | TString
+  | TFrac
   | TList
   | TRecord
   | TFun
@@ -149,6 +160,8 @@ type Env = Map Name Val
 valTy :: Val -> ValTy
 valTy (VInt _)     = TInt
 valTy (VBool _)    = TBool
+valTy (VString _)  = TString
+valTy (VFrac _)    = TFrac
 valTy (VList _)    = TList
 valTy (VRecord _)  = TRecord
 valTy (VClosure _) = TFun
