@@ -117,6 +117,7 @@ operatorTable =
     , binaryl "<" (builtin2 Lt)
     , binaryl "==" (builtin2 Eq)
     , binaryl "/=" (builtin2 Ne)
+    , binaryl "~=" (builtin2 HEq)
     ]
     -- 3
   , [ binaryr "&&" (builtin2 And)
