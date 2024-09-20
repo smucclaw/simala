@@ -202,7 +202,7 @@ intLit =
 
 fracLit :: Parser Double
 fracLit =
-  lexeme Lexer.float
+  lexeme (negate <$ string "-" <*> Lexer.float <|> Lexer.float)
 
 parens :: Parser a -> Parser a
 parens =
