@@ -125,13 +125,37 @@ bindVal ns0 vs0 = go Map.empty ns0 vs0
     go _    _        _        = arityError (length ns0) (length vs0)
 
 evalLit :: Lit -> Eval Val
-evalLit (IntLit i)  = pure (VInt i)
-evalLit (BoolLit b) = pure (VBool b)
+evalLit (IntLit i)    = pure (VInt i)
+evalLit (BoolLit b)   = pure (VBool b)
+evalLit (StringLit s) = pure (VString s)
+evalLit (FracLit f)   = pure (VFrac f)
+
+expect1Int :: [Expr] -> Eval Int
+expect1Int exprs = do
+  e <- expectArity1 exprs
+  (eval >=> expectInt) e
+
+expect1Frac :: [Expr] -> Eval Double
+expect1Frac exprs = do
+  e <- expectArity1 exprs
+  (eval >=> expectFrac) e
 
 expect1Bool :: [Expr] -> Eval Bool
 expect1Bool exprs = do
   e <- expectArity1 exprs
   (eval >=> expectBool) e
+
+expect1String :: [Expr] -> Eval Text
+expect1String exprs = do
+  e <- expectArity1 exprs
+  (eval >=> expectString) e
+
+expect2Strings :: [Expr] -> Eval (Text, Text)
+expect2Strings exprs = do
+  (e1, e2) <- expectArity2 exprs
+  s1 <- (eval >=> expectString) e1
+  s2 <- (eval >=> expectString) e2
+  pure (s1, s2)
 
 expect2Ints :: [Expr] -> Eval (Int, Int)
 expect2Ints exprs = do
@@ -140,6 +164,35 @@ expect2Ints exprs = do
   i2 <- (eval >=> expectInt) e2
   pure (i1, i2)
 
+expect2Nums :: [Expr] -> (Int -> Int -> Eval a) -> (Double -> Double -> Eval a) -> Eval a
+expect2Nums exprs ki kf = do
+  (e1, e2) <- expectArity2 exprs
+  v1 <- eval e1
+  case v1 of
+    VInt i1 -> do
+      i2 <- (eval >=> expectInt) e2
+      ki i1 i2
+    VFrac f1 -> do
+      f2 <- (eval >=> expectFrac) e2
+      kf f1 f2
+    v -> typeError [TInt, TFrac] (valTy v)
+
+expect2NumsOrStrings :: [Expr] -> (Int -> Int -> Eval a) -> (Double -> Double -> Eval a) -> (Text -> Text -> Eval a) -> Eval a
+expect2NumsOrStrings exprs ki kf ks = do
+  (e1, e2) <- expectArity2 exprs
+  v1 <- eval e1
+  case v1 of
+    VInt i1 -> do
+      i2 <- (eval >=> expectInt) e2
+      ki i1 i2
+    VFrac f1 -> do
+      f2 <- (eval >=> expectFrac) e2
+      kf f1 f2
+    VString s1 -> do
+      s2 <- (eval >=> expectString) e2
+      ks s1 s2
+    v -> typeError [TInt, TFrac, TString] (valTy v)
+
 expect2Bools :: [Expr] -> Eval (Bool, Bool)
 expect2Bools exprs = do
   (e1, e2) <- expectArity2 exprs
@@ -147,8 +200,8 @@ expect2Bools exprs = do
   b2 <- (eval >=> expectBool) e2
   pure (b1, b2)
 
-expect2IntsOrBoolsOrAtoms :: [Expr] -> (Int -> Int -> Eval a) -> (Bool -> Bool -> Eval a) -> (Name -> Name -> Eval a) -> Eval a
-expect2IntsOrBoolsOrAtoms exprs ki kb ka = do
+expect2NumsOrStringsOrBoolsOrAtoms :: [Expr] -> (Int -> Int -> Eval a) -> (Double -> Double -> Eval a) -> (Text -> Text -> Eval a) -> (Bool -> Bool -> Eval a) -> (Name -> Name -> Eval a) -> Eval a
+expect2NumsOrStringsOrBoolsOrAtoms exprs ki kf ks kb ka = do
   (e1, e2) <- expectArity2 exprs
   v1 <- eval e1
   case v1 of
@@ -158,55 +211,86 @@ expect2IntsOrBoolsOrAtoms exprs ki kb ka = do
     VInt i1 -> do
       i2 <- (eval >=> expectInt) e2
       ki i1 i2
+    VFrac f1 -> do
+      f2 <- (eval >=> expectFrac) e2
+      kf f1 f2
+    VString s1 -> do
+      s2 <- (eval >=> expectString) e2
+      ks s1 s2
     VAtom x1 -> do
       x2 <- (eval >=> expectAtom) e2
       ka x1 x2
-    v -> typeError TInt (valTy v) -- TODO: Int or Bool expected
+    v -> typeError [TBool, TInt, TFrac, TAtom] (valTy v)
+
+-- TODO: weird pitfall; we have to make a choice if the number of args is empty!
+expectNums :: [Expr] -> ([Int] -> Eval a) -> ([Double] -> Eval a) -> Eval a
+expectNums [] ki _kf = ki []
+expectNums (e : es) ki kf = do
+  v <- eval e
+  case v of
+    VInt i -> traverse (eval >=> expectInt) es >>= \ is -> ki (i : is)
+    VFrac f -> traverse (eval >=> expectFrac) es >>= \ fs -> kf (f : fs)
+    _ -> typeError [TInt, TFrac] (valTy v)
 
 evalBuiltin :: Builtin -> [Expr] -> Eval Val
-evalBuiltin Minus exprs = do
-  (i1, i2) <- expect2Ints exprs
-  pure (VInt (i1 - i2))
-evalBuiltin Divide exprs = do
-  (i1, i2) <- expect2Ints exprs
-  expectNonZero i2
-  pure (VInt (i1 `div` i2))
+evalBuiltin Minus exprs =
+  expect2Nums exprs
+    (\ i1 i2 -> pure (VInt (i1 - i2)))
+    (\ f1 f2 -> pure (VFrac (f1 - f2)))
+evalBuiltin Divide exprs =
+  expect2Nums exprs
+    (\ i1 i2 -> expectNonZero i2 >> pure (VInt (i1 `div` i2)))
+    (\ f1 f2 -> pure (VFrac (f1 / f2)))
 evalBuiltin Modulo exprs = do
   (i1, i2) <- expect2Ints exprs
   expectNonZero i2
   pure (VInt (i1 `mod` i2))
 evalBuiltin Sum exprs = do
-  is <- traverse (eval >=> expectInt) exprs
-  pure (VInt (sum is))
+  expectNums exprs
+    (\ is -> pure (VInt (sum is)))
+    (\ fs -> pure (VFrac (sum fs)))
 evalBuiltin Product exprs = do
-  is <- traverse (eval >=> expectInt) exprs
-  pure (VInt (product is))
+  expectNums exprs
+    (\ is -> pure (VInt (product is)))
+    (\ fs -> pure (VFrac (product fs)))
 evalBuiltin Maximum exprs = do
   expectNonEmpty exprs
-  is <- traverse (eval >=> expectInt) exprs
-  pure (VInt (maximum is))
+  expectNums exprs -- TODO: support strings
+    (\ is -> pure (VInt (maximum is)))
+    (\ fs -> pure (VFrac (maximum fs)))
 evalBuiltin Minimum exprs = do
   expectNonEmpty exprs
-  is <- traverse (eval >=> expectInt) exprs
-  pure (VInt (minimum is))
+  expectNums exprs -- TODO: support strings
+    (\ is -> pure (VInt (minimum is)))
+    (\ fs -> pure (VFrac (minimum fs)))
 evalBuiltin Not exprs = do
   b <- expect1Bool exprs
   pure (VBool (not b))
 evalBuiltin Lt exprs = do
-  (i1, i2) <- expect2Ints exprs
-  pure (VBool (i1 < i2))
+  expect2NumsOrStrings exprs
+    (\ i1 i2 -> pure (VBool (i1 < i2)))
+    (\ f1 f2 -> pure (VBool (f1 < f2)))
+    (\ s1 s2 -> pure (VBool (s1 < s2)))
 evalBuiltin Le exprs = do
-  (i1, i2) <- expect2Ints exprs
-  pure (VBool (i1 <= i2))
+  expect2NumsOrStrings exprs
+    (\ i1 i2 -> pure (VBool (i1 <= i2)))
+    (\ f1 f2 -> pure (VBool (f1 <= f2)))
+    (\ s1 s2 -> pure (VBool (s1 <= s2)))
 evalBuiltin Gt exprs = do
-  (i1, i2) <- expect2Ints exprs
-  pure (VBool (i1 > i2))
+  expect2NumsOrStrings exprs
+    (\ i1 i2 -> pure (VBool (i1 > i2)))
+    (\ f1 f2 -> pure (VBool (f1 > f2)))
+    (\ s1 s2 -> pure (VBool (s1 > s2)))
 evalBuiltin Ge exprs = do
-  (i1, i2) <- expect2Ints exprs
-  pure (VBool (i1 >= i2))
+  expect2NumsOrStrings exprs
+    (\ i1 i2 -> pure (VBool (i1 >= i2)))
+    (\ f1 f2 -> pure (VBool (f1 >= f2)))
+    (\ s1 s2 -> pure (VBool (s1 >= s2)))
 evalBuiltin Eq exprs = do
-  expect2IntsOrBoolsOrAtoms exprs
+  expect2NumsOrStringsOrBoolsOrAtoms exprs
     (\ i1 i2 -> pure (VBool (i1 == i2)))
+    (\ f1 f2 -> pure (VBool (f1 == f2)))
+    (\ s1 s2 -> pure (VBool (s1 == s2)))
     (\ b1 b2 -> pure (VBool (b1 == b2)))
     (\ x1 x2 -> pure (VBool (x1 == x2)))
 evalBuiltin HEq exprs = do
@@ -215,12 +299,16 @@ evalBuiltin HEq exprs = do
   v2 <- eval e2
   case (v1, v2) of
     (VInt i1, VInt i2) -> pure (VBool (i1 == i2))
+    (VFrac f1, VFrac f2) -> pure (VBool (f1 == f2))
+    (VString s1, VString s2) -> pure (VBool (s1 == s2))
     (VBool b1, VBool b2) -> pure (VBool (b1 == b2))
     (VAtom a1, VAtom a2) -> pure (VBool (a1 == a2))
     (_, _) -> pure (VBool False)
 evalBuiltin Ne exprs = do
-  expect2IntsOrBoolsOrAtoms exprs
+  expect2NumsOrStringsOrBoolsOrAtoms exprs
     (\ i1 i2 -> pure (VBool (i1 /= i2)))
+    (\ f1 f2 -> pure (VBool (f1 /= f2)))
+    (\ s1 s2 -> pure (VBool (s1 /= s2)))
     (\ b1 b2 -> pure (VBool (b1 /= b2)))
     (\ x1 x2 -> pure (VBool (x1 /= x2)))
 evalBuiltin And [] =
@@ -282,6 +370,21 @@ evalBuiltin Merge es = do
   -- We could be smarter in the case of nested records.
   let r = Map.toList $ Map.unionWith (\_ b -> b) (Map.fromList r1) (Map.fromList r2)
   pure $ VRecord r
+evalBuiltin Floor es = do
+  f <- expect1Frac es
+  pure $ VInt (floor f)
+evalBuiltin Ceiling es = do
+  f <- expect1Frac es
+  pure $ VInt (ceiling f)
+evalBuiltin FromInt es = do
+  i <- expect1Int es
+  pure $ VFrac (fromIntegral i)
+evalBuiltin Explode es = do
+  s <- expect1String es
+  pure $ VList (VString <$> Text.chunksOf 1 s)
+evalBuiltin Append es = do
+  (s1, s2) <- expect2Strings es
+  pure $ VString (s1 <> s2)
 
 doEvalDeclsTracing :: TraceMode -> Env -> [Decl] -> IO Env
 doEvalDeclsTracing tracing env ds =

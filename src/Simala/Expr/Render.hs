@@ -83,6 +83,7 @@ renderBuiltin p Sum        [e1, e2]     = renderBinopl 6 " + "  p e1 e2
 renderBuiltin p Product    [e1, e2]     = renderBinopl 7 " * "  p e1 e2
 renderBuiltin p Divide     [e1, e2]     = renderBinopl 7 " / "  p e1 e2
 renderBuiltin p Modulo     [e1, e2]     = renderBinopl 7 " % "  p e1 e2
+renderBuiltin p Append     [e1, e2]     = renderBinopr 6 " ++ " p e1 e2
 renderBuiltin p Ge         [e1, e2]     = renderBinop  4 " >= " p e1 e2
 renderBuiltin p Le         [e1, e2]     = renderBinop  4 " <= " p e1 e2
 renderBuiltin p Gt         [e1, e2]     = renderBinop  4 " > "  p e1 e2
@@ -133,18 +134,27 @@ instance Render Builtin where
   render Foldl      = "foldl"
   render Case       = "case"
   render Merge      = "merge"
+  render Floor      = "floor"
+  render Ceiling    = "ceiling"
+  render FromInt    = "fromInt"
+  render Explode    = "explode"
+  render Append     = "append"
 
 instance Render Lit where
   render :: Lit -> Text
   render (IntLit i)      = Text.pack (show i)
   render (BoolLit True)  = "true"
   render (BoolLit False) = "false"
+  render (StringLit s)   = Text.pack (show s)
+  render (FracLit f)     = Text.pack (show f)
 
 instance Render Val where
   render :: Val -> Text
   render (VInt i)                          = Text.pack (show i)
   render (VBool True)                      = "true"
   render (VBool False)                     = "false"
+  render (VString s)                       = Text.pack (show s)
+  render (VFrac f)                         = Text.pack (show f)
   render (VList vs)                        = renderList vs
   render (VRecord r)                       = renderRow " = " r
   render (VClosure (MkClosure t args _ _)) = "<fun" <> renderTransparency t <> "/" <> Text.pack (show (length args)) <> ">"

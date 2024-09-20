@@ -106,6 +106,8 @@ operatorTable =
     -- 6
   , [ binaryl "+" (builtin2 Sum)
     , binaryl "-" (builtin2 Minus)
+    , binaryr "++" (builtin2 Append) -- unclear whether it should be 5 ((:) in Haskell) or 6 ((<>) in Haskell), unclear if right-associative helps
+      -- NOTE: I've chosen 6 over 5 because it is easier to handle with lookahead / try due to both + and ++ being operators
     ]
     -- 5
   , [ binaryr ":" Cons
@@ -184,13 +186,23 @@ argsOf p = between (symbol "(") (symbol ")") (sepBy p (symbol ","))
 
 lit :: Parser Lit
 lit =
-      IntLit <$> int
+      FracLit <$> try fracLit
+  <|> IntLit <$> intLit
   <|> BoolLit False <$ keyword "false"
   <|> BoolLit True  <$ keyword "true"
+  <|> StringLit <$> stringLit
 
-int :: Parser Int
-int =
+stringLit :: Parser Text
+stringLit =
+  lexeme (Text.pack <$ char '\"' <*> manyTill Lexer.charLiteral (char '\"'))
+
+intLit :: Parser Int
+intLit =
   lexeme (negate <$ string "-" <*> Lexer.decimal <|> Lexer.decimal)
+
+fracLit :: Parser Double
+fracLit =
+  lexeme Lexer.float
 
 parens :: Parser a -> Parser a
 parens =
@@ -217,6 +229,10 @@ builtins =
     , ("sum", Sum)
     , ("product", Product)
     , ("merge", Merge)
+    , ("floor", Floor)
+    , ("ceiling", Ceiling)
+    , ("fromInt", FromInt)
+    , ("explode", Explode)
     ]
 
 decl :: Parser Decl
@@ -230,7 +246,7 @@ replEvalDecl = Eval <$> expr
 
 decls :: Parser [Decl]
 decls =
-  sepBy decl (symbol ";")
+  sepEndBy decl (symbol ";")
 
 instruction :: Parser Instruction
 instruction =
