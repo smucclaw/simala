@@ -46,6 +46,7 @@ library
     Simala.Json.Parser
     Simala.Main
     Simala.Repl
+    Simala.TranspileToLam4
     Util.RevList
 
 executable simala

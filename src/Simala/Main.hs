@@ -6,6 +6,7 @@ import Simala.Expr.Evaluator
 import Simala.Expr.Parser
 import Simala.Expr.Type
 import Simala.Repl
+import Simala.TranspileToLam4
 
 import qualified Data.Aeson as Aeson
 import qualified Base.Text as Text
@@ -13,15 +14,22 @@ import Options.Applicative as Options
 
 data Options =
   MkOptions
-    { repl    :: !Bool
+    { mode    :: !Mode
     , tracing :: TraceMode
     , files   :: [FilePath]
     }
 
+data Mode =
+  Evaluate | Repl | TranspileToLam4
+  deriving stock Eq
+
 optionsDescription :: Options.Parser Options
 optionsDescription =
   MkOptions
-  <$> switch (long "repl" <> help "Start in REPL mode")
+  <$> (    flag' Repl (long "repl" <> help "Start in REPL mode")
+       <|> flag' TranspileToLam4 (long "lam4" <> help "Transpile to Lam4")
+       <|> pure Evaluate
+      )
   <*> (toTracingMode <$> strOption (long "tracing" <> help "Tracing, one of \"off\", \"full\" (default), \"results\"") <|> pure TraceResults)
   <*> many (strArgument (metavar "FILES..."))
 
@@ -41,14 +49,18 @@ optionsConfig =
 main :: IO ()
 main = do
   options <- Options.execParser optionsConfig
-  if null options.files && not options.repl
+  if null options.files && options.mode == Repl
     then do
       hPutStrLn stderr "simala: no input files given; use --help for help"
-    else if options.repl
-      then do
-        env <- compileDeclOrJsonFiles options.tracing options.files emptyEnv
-        runRepl env
-      else compileFiles options.tracing options.files emptyEnv
+    else
+      case options.mode of
+        Repl -> do
+          env <- compileDeclOrJsonFiles options.tracing options.files emptyEnv
+          runRepl env
+        Evaluate ->
+          compileFiles options.tracing options.files emptyEnv
+        TranspileToLam4 ->
+          mapM_ transpileToLam4File options.files
 
 -- | Try to opportunistically parse as JSON, otherwise as Simala.
 compileDeclOrJsonFile :: TraceMode -> FilePath -> Env -> IO Env
@@ -68,6 +80,13 @@ compileDeclFile tm inputFile env = do
   case parseDecls inputFile input of
     Right ds -> doEvalDeclsTracing tm env ds
     Left err -> putStr err >> pure env
+
+transpileToLam4File :: FilePath -> IO ()
+transpileToLam4File inputFile = do
+  input <- Text.readFile inputFile
+  case parseDecls inputFile input of
+    Right ds -> Text.putStr (Text.unlines (lam4 <$> ds))
+    Left err -> putStr err
 
 compileDeclOrJsonFiles :: TraceMode -> [FilePath] -> Env -> IO Env
 compileDeclOrJsonFiles _  []       env = pure env
