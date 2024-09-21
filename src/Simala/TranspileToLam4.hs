@@ -101,14 +101,14 @@ instance AsLam4 Lit where
   lam4 (IntLit i)      = Text.pack (show i)
   lam4 (BoolLit True)  = "True"
   lam4 (BoolLit False) = "False"
-  lam4 (StringLit s)   = Text.pack (show s)
+  lam4 (StringLit s)   = lam4 (atomMapping s)
   lam4 (FracLit f)     = Text.pack (show f)
 
 atomMapping :: Text -> Text
 atomMapping "unknown" = "Unknown"
 atomMapping "uncertain" = "Uncertain"
 atomMapping "undefined" = "Undefined"
-atomMapping atom = error ("unknown atom: " <> Text.unpack atom)
+atomMapping x = x -- TODO: unsafe
 
 lam4Binopl :: (AsLam4 a1, AsLam4 a2) => Int -> Text -> Int -> a1 -> a2 -> Text
 lam4Binopl t txt p e1 e2 = parensIf (p > t) (lam4AtPrio t e1 <> txt <> lam4AtPrio (t + 1) e2)
