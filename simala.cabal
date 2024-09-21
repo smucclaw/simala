@@ -12,16 +12,8 @@ common defaults
     OverloadedRecordDot
     OverloadedStrings
     OverloadedLabels
-
-executable simala
-  import: defaults
-  hs-source-dirs: app
   build-depends:
-    base,
-    aeson,
-    optparse-applicative,
-    simala
-  main-is: Main.hs
+    base
 
 library
   import: defaults
@@ -34,6 +26,7 @@ library
     megaparsec,
     mtl,
     optics,
+    optparse-applicative,
     parser-combinators,
     prettyprinter,
     text
@@ -50,5 +43,27 @@ library
     Simala.Expr.Render
     Simala.Expr.Type
     Simala.Json.Parser
+    Simala.Main
     Simala.Repl
     Util.RevList
+
+executable simala
+  import: defaults
+  hs-source-dirs: app
+  build-depends:
+    simala
+  main-is: Main.hs
+
+test-suite simala-test
+  import: defaults
+  type: exitcode-stdio-1.0
+  hs-source-dirs: tests
+  main-is: Main.hs
+  build-depends:
+    base,
+    directory,
+    filepath,
+    hspec,
+    hspec-golden,
+    silently,
+    simala
