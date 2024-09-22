@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds #-}
 module Simala.TranspileToLam4 where
 
 import Base
@@ -6,15 +7,11 @@ import qualified Base.Text as Text
 import Simala.Expr.Render
 import Simala.Expr.Type
 
+import Optics ((%))
 import Optics.Fold (toListOf)
-import Optics.Generic (gplate)
+import Optics.Generic (gconstructor, gplate)
 import Prettyprinter
 import Prettyprinter.Render.Text
-
--- POSSIBLE TODOs:
--- - scan for atom declarations, or assume global mapping?
--- - group nested let bindings?
--- - layout
 
 --
 --
@@ -75,8 +72,8 @@ lam4Builtin :: Int -> Builtin -> [Expr] -> Doc ann
 lam4Builtin _p List      []           = "EMPTY_LIST "
 lam4Builtin _p List      es           = "LIST_OF " <> lam4Commas es
 lam4Builtin p Minus      [e1, e2]     = lam4Binop 6 "-"  p e1 e2
-lam4Builtin p Sum        [e1, e2]     = lam4Binop 6 "+"  p e1 e2
-lam4Builtin p Product    [e1, e2]     = lam4Binop 7 "*"  p e1 e2
+lam4Builtin p Sum        [e1, e2]     = lam4Binopl 6 "+"  p e1 e2
+lam4Builtin p Product    [e1, e2]     = lam4Binopl 7 "*"  p e1 e2
 lam4Builtin p Divide     [e1, e2]     = lam4Binop 7 "/"  p e1 e2
 lam4Builtin p Ge         [e1, e2]     = lam4Binop 4 ">=" p e1 e2
 lam4Builtin p Le         [e1, e2]     = lam4Binop 4 "<=" p e1 e2
@@ -85,8 +82,28 @@ lam4Builtin p Lt         [e1, e2]     = lam4Binop 4 "<"  p e1 e2
 lam4Builtin p Eq         [e1, e2]     = lam4Binop 4 "EQUALS" p e1 e2
 lam4Builtin p HEq        [e1, e2]     = lam4Binop 4 "EQUALS" p e1 e2
 lam4Builtin p Ne         [e1, e2]     = lam4Binop 4 "DIFFERS_FROM" p e1 e2
-lam4Builtin p And        [e1, e2]     = lam4Binop 3 "AND" p e1 e2
-lam4Builtin p Or         [e1, e2]     = lam4Binop 2 "OR" p e1 e2
+lam4Builtin p And        [e1, e2]     =
+  -- NOTE: Or currently right-associative in Simala and left-associative in Lam4, but
+  -- it should not matter
+  let
+    clauses = scanAnd e2
+  in
+    parensIf (p > 3) (align (sep
+      (  [gindent 4 (lam4AtPrio 4 e1)]
+      ++ concat ((\ e -> ["AND" <+> lam4AtPrio 4 e]) <$> clauses)
+      )
+    ))
+lam4Builtin p Or         [e1, e2]     =
+  -- NOTE: Or currently right-associative in Simala and left-associative in Lam4, but
+  -- it should not matter
+  let
+    clauses = scanOr e2
+  in
+    parensIf (p > 2) (align (sep
+      (  [gindent 3 (lam4AtPrio 3 e1)]
+      ++ concat ((\ e -> ["OR" <+> lam4AtPrio 3 e]) <$> clauses)
+      )
+    ))
 lam4Builtin p IfThenElse [e1, e2, e3] =
   let
     (conditions, fallback) = scanIfThenElse e3
@@ -103,6 +120,16 @@ lam4Builtin p Foldr      [e1, e2, e3] =
 lam4Builtin p FromInt    [e]          = parensIf (p > 10) (lam4SimalaFunApp "FromInt" [e])
 lam4Builtin p Floor      [e]          = parensIf (p > 10) (lam4SimalaFunApp "Floor" [e])
 lam4Builtin _ b          _es          = error $ "unspported builtin: " <> show b
+
+scanAnd :: Expr -> [Expr]
+scanAnd (Builtin And [e1, e2]) =
+  e1 : scanOr e2
+scanAnd e = [e]
+
+scanOr :: Expr -> [Expr]
+scanOr (Builtin Or [e1, e2]) =
+  e1 : scanOr e2
+scanOr e = [e]
 
 scanIfThenElse :: Expr -> ([(Expr, Expr)], Expr)
 scanIfThenElse (Builtin IfThenElse [e1, e2, e3]) =
@@ -136,7 +163,7 @@ instance AsLam4 Lit where
   lam4 (IntLit i)      = pretty (show i)
   lam4 (BoolLit True)  = "True"
   lam4 (BoolLit False) = "False"
-  lam4 (StringLit s)   = lam4 (atomMapping s)
+  lam4 (StringLit s)   = pretty (atomMapping s) -- pretty (show s), depending on whether Lam4 supports strings properly
   lam4 (FracLit f)     = pretty (show f)
 
 atomMapping :: Text -> Text
@@ -165,8 +192,11 @@ lam4Row xs = hcat (punctuate ", " (map item xs))
 doToLam4 :: [Decl] -> Text
 doToLam4 decls =
   let
+    stringLits :: [Text]
+    stringLits = nub (toListOf (gplate @Lit % gconstructor @"StringLit") decls)
+
     atoms :: [Atom]
-    atoms = nub (toListOf (gplate @Atom) decls)
+    atoms = nub (toListOf (gplate @Atom) decls ++ (MkAtom <$> stringLits))
   in
     prelude <> Text.unlines (concept <$> atoms) <> Text.unlines (lam4AsText <$> decls)
 
@@ -175,4 +205,7 @@ concept (MkAtom n) = "ONE CONCEPT " <> asText (renderName (atomMapping n)) <> " 
 
 prelude :: Text
 prelude = Text.unlines
-  [ "STRUCTURE Any END" ]
+  [ "STRUCTURE Any END"
+  , "ONE CONCEPT FromInt END"
+  , "ONE CONCEPT Floor END"
+  ]
