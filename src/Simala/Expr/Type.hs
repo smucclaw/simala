@@ -67,7 +67,7 @@ data Lit =
   | FracLit    Double         -- fractional literal, TODO: not sure if we want IEEE semantics
   | BoolLit    Bool           -- could also be done using two nullary built-ins
   | StringLit  Text
-  deriving stock Show
+  deriving stock (Generic, Show)
 
 -- | Builtin operations.
 data Builtin =
