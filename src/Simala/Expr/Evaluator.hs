@@ -200,7 +200,7 @@ expect2Bools exprs = do
   b2 <- (eval >=> expectBool) e2
   pure (b1, b2)
 
-expect2NumsOrStringsOrBoolsOrAtoms :: [Expr] -> (Int -> Int -> Eval a) -> (Double -> Double -> Eval a) -> (Text -> Text -> Eval a) -> (Bool -> Bool -> Eval a) -> (Name -> Name -> Eval a) -> Eval a
+expect2NumsOrStringsOrBoolsOrAtoms :: [Expr] -> (Int -> Int -> Eval a) -> (Double -> Double -> Eval a) -> (Text -> Text -> Eval a) -> (Bool -> Bool -> Eval a) -> (Atom -> Atom -> Eval a) -> Eval a
 expect2NumsOrStringsOrBoolsOrAtoms exprs ki kf ks kb ka = do
   (e1, e2) <- expectArity2 exprs
   v1 <- eval e1

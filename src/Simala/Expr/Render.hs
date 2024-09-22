@@ -106,7 +106,7 @@ renderBinopr t txt p e1 e2 = parensIf (p > t) (renderAtPrio (t + 1) e1 <> txt <>
 renderBinop :: (Render a1, Render a2) => Int -> Text -> Int -> a1 -> a2 -> Text
 renderBinop t txt p e1 e2 = parensIf (p > t) (renderAtPrio (t + 1) e1 <> txt <> renderAtPrio (t + 1) e2)
 
-parensIf :: Bool -> Text -> Text
+parensIf :: (Semigroup a, IsString a) => Bool -> a -> a
 parensIf True  x = "(" <> x <> ")"
 parensIf False x = x
 
@@ -158,12 +158,16 @@ instance Render Val where
   render (VList vs)                        = renderList vs
   render (VRecord r)                       = renderRow " = " r
   render (VClosure (MkClosure t args _ _)) = "<fun" <> renderTransparency t <> "/" <> Text.pack (show (length args)) <> ">"
-  render (VAtom x)                         = "'" <> x
+  render (VAtom (MkAtom x))                = "'" <> x
   render VBlackhole                        = "<blackhole>"
 
 instance Render Name where
   render :: Name -> Text
   render = renderName
+
+instance Render Atom where
+  render :: Atom -> Text
+  render (MkAtom n) = render n
 
 -- | Helper function to render an argument / parameter list.
 renderArgs :: Render a => [a] -> Text
