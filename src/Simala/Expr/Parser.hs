@@ -157,7 +157,7 @@ baseExpr =
   <|> Record <$> between (symbol "{") (symbol "}") (row (symbol "=") expr)
   <|> Lit <$> lit
   <|> Var <$> name
-  <|> Atom <$ char '\'' <*> name
+  <|> Atom . MkAtom <$ char '\'' <*> name
   <|> Undefined <$ keyword "undefined"
   <|> parens expr
 

@@ -85,7 +85,7 @@ transpileToLam4File :: FilePath -> IO ()
 transpileToLam4File inputFile = do
   input <- Text.readFile inputFile
   case parseDecls inputFile input of
-    Right ds -> Text.putStr (Text.unlines (lam4 <$> ds))
+    Right ds -> Text.putStr (doToLam4 ds)
     Left err -> putStr err
 
 compileDeclOrJsonFiles :: TraceMode -> [FilePath] -> Env -> IO Env

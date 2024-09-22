@@ -234,14 +234,18 @@ instance Render Val where
   render (VString s)                       = pretty (show s)
   render (VFrac f)                         = pretty (show f)
   render (VList vs)                        = renderList vs
-  render (VRecord r)                       = renderRow "=" r
+  render (VRecord r)                       = renderRow " = " r
   render (VClosure (MkClosure t args _ _)) = "<fun" <> renderTransparency t <> "/" <> pretty (show (length args)) <> ">"
-  render (VAtom x)                         = "'" <> render x
+  render (VAtom (MkAtom x))                = "'" <> pretty x
   render VBlackhole                        = "<blackhole>"
 
 instance Render Name where
   render :: Name -> Doc ann
   render = renderName
+
+instance Render Atom where
+  render :: Atom -> Doc ann
+  render (MkAtom n) = render n
 
 -- | Helper function to render an argument / parameter list.
 renderArgs :: Render a => [a] -> Doc ann

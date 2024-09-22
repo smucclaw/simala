@@ -141,7 +141,7 @@ expectString :: Val -> Eval Text -- fails if type-incorrect
 expectString (VString s) = pure s
 expectString v           = typeError [TString] (valTy v)
 
-expectAtom :: Val -> Eval Name -- fails if type-incorrect
+expectAtom :: Val -> Eval Atom -- fails if type-incorrect
 expectAtom (VAtom x) = pure x
 expectAtom v         = typeError [TAtom] (valTy v)
 

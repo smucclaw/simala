@@ -5,6 +5,9 @@ import qualified Base.Map as Map
 
 type Name = Text
 
+newtype Atom = MkAtom Name
+  deriving stock (Generic, Eq, Show)
+
 -- | Declarations are used in the repl, in declaration files,
 -- and in let expressions.
 --
@@ -15,7 +18,7 @@ data Decl =
     NonRec Transparency Name Expr
   | Rec    Transparency Name Expr
   | Eval   Expr
-  deriving stock Show
+  deriving stock (Generic, Show)
 
 -- | Repl instructions.
 --
@@ -40,7 +43,7 @@ data ReplCommand =
 data Expr =
     Builtin    Builtin [Expr]              -- built-ins; they currently decide their own eval strategy, so can be used for control flow
   | Var        Name
-  | Atom       Name                        -- for simulating enumeration types
+  | Atom       Atom                        -- for simulating enumeration types
   | Lit        Lit
   | App        Expr [Expr]                 -- function application (not a built-in because it's so fundamental)
   | Record     (Row Expr)                  -- record construction
@@ -48,7 +51,7 @@ data Expr =
   | Fun        Transparency [Name] Expr    -- anonymous function
   | Let        Decl Expr                   -- possibly recursive let-binding
   | Undefined                              -- unclear
-  deriving stock Show
+  deriving stock (Generic, Show)
 
 type Row a = [(Name, a)]
 
@@ -108,7 +111,7 @@ data Val =
   | VList [Val]        -- ^ fully evaluated list
   | VRecord (Row Val)  -- ^ fully evaluated record
   | VClosure Closure   -- ^ closure / suspended function
-  | VAtom Name         -- ^ an atom is just a name that is not interpreted further
+  | VAtom Atom         -- ^ an atom is just a name that is not interpreted further
   | VBlackhole         -- ^ special value used in the evaluation of recursive lets
   deriving stock Show
 
