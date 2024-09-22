@@ -1,0 +1,12 @@
+rec x = 2; -- recursive value bindings should now just work
+y = 3; -- non-recursive ones as well
+rec z = z; -- this should crash / yield a blackhole
+#eval x;
+#eval y;
+#eval z;
+
+
+#eval
+  let rec x = 1
+  in let rec y = (let rec x = 10 in x)
+     in x + y * y
