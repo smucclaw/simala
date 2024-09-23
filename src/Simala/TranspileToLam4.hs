@@ -141,7 +141,7 @@ lam4SimalaFunApp x es = x <> "(" <> lam4Commas es <> ")"
 
 lam4Inner :: Decl -> Doc ann
 lam4Inner (Rec _ _ _)    = error "uncertain if recursive inner decls are supported"
-lam4Inner (NonRec _ x e) = align (nest 4 (sep [lam4 x <> " = ", lam4 e]))
+lam4Inner (NonRec _ x e) = align (nest 4 (sep [lam4 x <+> "=", lam4 e]))
 lam4Inner (Eval _)       = error "inner eval directive are not supported"
 
 instance AsLam4 Decl where
