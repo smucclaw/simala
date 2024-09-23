@@ -18,7 +18,7 @@ import Prettyprinter.Render.Text
 -- An attempt at inferring operator priorities from the Langium grammar:
 --
 -- Expr: OrExpr | LetExpr | RecordExpr
--- OrExpr: 
+-- OrExpr:
 --
 --
 --    (_) | ?anon_function | EMPTY_LIST | LIST_OF ... | ?foldr ...
@@ -123,8 +123,8 @@ lam4Builtin p IfThenElse [e1, e2, e3] =
 lam4Builtin p Not        [e]          = parensIf (p > 10) ("NOT" <+> lam4 e)
 lam4Builtin p Foldr      [e1, e2, e3] =
   parensIf (p > 0) (align (sep ["FOLD_RIGHT", "using" <+> lam4 e1, "starting_with" <+> lam4 e2, "over" <+> lam4 e3]))
-lam4Builtin p FromInt    [e]          = parensIf (p > 10) (lam4SimalaFunApp "FromInt" [e])
-lam4Builtin p Floor      [e]          = parensIf (p > 10) (lam4SimalaFunApp "Floor" [e])
+lam4Builtin p FromInt    [e]          = parensIf (p > 10) (lam4SimalaFunApp "integer_to_fraction" [e])
+lam4Builtin p Floor      [e]          = parensIf (p > 10) (lam4SimalaFunApp "floor" [e])
 lam4Builtin _ b          _es          = error $ "unspported builtin: " <> show b
 
 scanAnd :: Expr -> [Expr]
@@ -146,7 +146,7 @@ scanIfThenElse (Builtin IfThenElse [e1, e2, e3]) =
 scanIfThenElse e = ([], e)
 
 lam4SimalaFunApp :: Doc ann -> [Expr] -> Doc ann
-lam4SimalaFunApp x es = x <> "(" <> lam4Commas es <> ")" 
+lam4SimalaFunApp x es = x <> "(" <> lam4Commas es <> ")"
 
 lam4Inner :: Decl -> Doc ann
 lam4Inner (Rec _ _ _)    = error "uncertain if recursive inner decls are supported"
@@ -228,6 +228,4 @@ concept (MkAtom n) = "ONE CONCEPT " <> lam4Name (atomMapping n) <> " END"
 prelude :: Text
 prelude = Text.unlines
   [ "STRUCTURE Any END"
-  , "ONE CONCEPT FromInt END"
-  , "ONE CONCEPT Floor END"
   ]
