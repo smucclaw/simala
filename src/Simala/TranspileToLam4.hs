@@ -7,6 +7,7 @@ import qualified Base.Text as Text
 import Simala.Expr.Render
 import Simala.Expr.Type
 
+import Numeric (showFFloat)
 import Optics ((%))
 import Optics.Fold (toListOf)
 import Optics.Generic (gconstructor, gplate)
@@ -161,7 +162,7 @@ instance AsLam4 Lit where
   lam4 (BoolLit True)  = "True"
   lam4 (BoolLit False) = "False"
   lam4 (StringLit s)   = pretty (atomMapping s) -- pretty (show s), depending on whether Lam4 supports strings properly
-  lam4 (FracLit f)     = pretty (show f) -- (ceiling f :: Int))
+  lam4 (FracLit f)     = pretty (showFFloat Nothing f "") -- (ceiling f :: Int))
 
 atomMapping :: Text -> Text
 atomMapping "unknown" = "Unknown"
