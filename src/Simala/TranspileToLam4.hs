@@ -114,8 +114,8 @@ lam4Builtin p IfThenElse [e1, e2, e3] =
 lam4Builtin p Not        [e]          = parensIf (p > 10) ("NOT" <+> lam4 e)
 lam4Builtin p Foldr      [e1, e2, e3] =
   parensIf (p > 0) (align (sep ["FOLD_RIGHT", "using" <+> lam4 e1, "starting_with" <+> lam4 e2, "over" <+> lam4 e3]))
-lam4Builtin p FromInt    [e]          = parensIf (p > 10) (lam4SimalaFunApp "FromInt" [e])
-lam4Builtin p Floor      [e]          = parensIf (p > 10) (lam4SimalaFunApp "Floor" [e])
+lam4Builtin p FromInt    [e]          = parensIf (p > 10) (lam4SimalaFunApp "integer_to_fraction" [e])
+lam4Builtin p Floor      [e]          = parensIf (p > 10) (lam4SimalaFunApp "floor" [e])
 lam4Builtin _ b          _es          = error $ "unspported builtin: " <> show b
 
 scanAnd :: Expr -> [Expr]
@@ -216,6 +216,4 @@ concept (MkAtom n) = "ONE CONCEPT " <> lam4Name (atomMapping n) <> " END"
 prelude :: Text
 prelude = Text.unlines
   [ "STRUCTURE Any END"
-  , "ONE CONCEPT FromInt END"
-  , "ONE CONCEPT Floor END"
   ]
