@@ -49,7 +49,7 @@ optionsConfig =
 main :: IO ()
 main = do
   options <- Options.execParser optionsConfig
-  if null options.files && options.mode == Repl
+  if null options.files && options.mode /= Repl
     then do
       hPutStrLn stderr "simala: no input files given; use --help for help"
     else
