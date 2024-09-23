@@ -50,10 +50,7 @@ instance AsLam4 Expr where
   lam4AtPrio _ (Var x)           = lam4 x
   lam4AtPrio _ (Atom (MkAtom x)) = lam4 (atomMapping x)
   lam4AtPrio _ (Lit l)           = lam4 l
-  -- lam4AtPrio p (Cons e1 e2)      = lam4Binop 9 "followed_by_items_in" p e1 e2
-  -- lam4AtPrio _ (List [])         = "EMPTY_LIST"
-  -- lam4AtPrio _ (List xs)         = "LIST_OF " <> lam4Commas xs
-  lam4AtPrio _ (Record r)        = "{| " <> lam4Row r <> " |}"
+  lam4AtPrio _ (Record r)        = "{|" <+> lam4Row r <+> "|}"
   lam4AtPrio p (Project e n)     = parensIf (p > 8) (lam4AtPrio 9 e <> "'s" <+> lam4 n)
   lam4AtPrio p (Fun _t args e)   =
     parensIf (p > 0) (align (nest 4 (sep ["\\" <+> hsep (map lam4 args) <+> "=>", lam4 e])))
@@ -63,7 +60,7 @@ instance AsLam4 Expr where
     in
       parensIf (p > 0)
         (align (sep
-          ["LET" <+> "{" <+> align (vsep (lam4Inner <$> decls)) <+> "}", "IN" <+> "{" <+> lam4AtPrio 1 body <+> "}"]
+          ["LET" <+> "{" <+> align (vsep (punctuate "," (lam4Inner <$> decls))) <+> "}", "IN" <+> "{" <+> lam4AtPrio 1 body <+> "}"]
       ))
   lam4AtPrio p (App e es)        = parensIf (p > 10) (lam4AtPrio 11 e <> "(" <> lam4Commas es <> ")")
   lam4AtPrio _ Undefined         = lam4 (atomMapping "undefined")
@@ -144,7 +141,7 @@ lam4SimalaFunApp x es = x <> "(" <> lam4Commas es <> ")"
 
 lam4Inner :: Decl -> Doc ann
 lam4Inner (Rec _ _ _)    = error "uncertain if recursive inner decls are supported"
-lam4Inner (NonRec _ x e) = lam4 x <> " = " <> lam4 e
+lam4Inner (NonRec _ x e) = align (nest 4 (sep [lam4 x <> " = ", lam4 e]))
 lam4Inner (Eval _)       = error "inner eval directive are not supported"
 
 instance AsLam4 Decl where
@@ -156,7 +153,7 @@ instance AsLam4 Decl where
 
 instance AsLam4 Name where
   lam4 :: Name -> Doc ann
-  lam4 = renderName
+  lam4 = pretty . lam4Name
 
 instance AsLam4 Lit where
   lam4 :: Lit -> Doc ann
@@ -164,13 +161,26 @@ instance AsLam4 Lit where
   lam4 (BoolLit True)  = "True"
   lam4 (BoolLit False) = "False"
   lam4 (StringLit s)   = pretty (atomMapping s) -- pretty (show s), depending on whether Lam4 supports strings properly
-  lam4 (FracLit f)     = pretty (show f)
+  lam4 (FracLit f)     = pretty (show f) -- (ceiling f :: Int))
 
 atomMapping :: Text -> Text
 atomMapping "unknown" = "Unknown"
 atomMapping "uncertain" = "Uncertain"
 atomMapping "undefined" = "Undefined"
 atomMapping x = x -- TODO: unsafe
+
+lam4Name :: Name -> Text
+lam4Name n
+  | needsQuoting n = lam4Mangle n -- "`" <> n <> "`"
+  | otherwise      = n
+
+lam4Mangle :: Name -> Text
+lam4Mangle =
+    Text.replace "'" "_"
+  . Text.replace "-" "_"
+  . Text.replace "(" "_"
+  . Text.replace ")" "_"
+  . Text.replace " " "_"
 
 lam4Binopl :: (AsLam4 a1, AsLam4 a2) => Int -> Text -> Int -> a1 -> a2 -> Doc ann
 lam4Binopl t txt p e1 e2 = parensIf (p > t) (align (sep [gindent (Text.length txt + 1) (lam4AtPrio t e1), pretty txt <+> lam4AtPrio (t + 1) e2]))
@@ -185,7 +195,7 @@ lam4Commas :: AsLam4 a => [a] -> Doc ann
 lam4Commas xs = align (sep (punctuate "," (map lam4 xs)))
 
 lam4Row :: AsLam4 a => Row a -> Doc ann
-lam4Row xs = hcat (punctuate ", " (map item xs))
+lam4Row xs = align (sep (punctuate "," (map item xs)))
   where
     item (x, a) = lam4 x <+> "=" <+> lam4 a
 
@@ -201,7 +211,7 @@ doToLam4 decls =
     prelude <> Text.unlines (concept <$> atoms) <> Text.unlines (lam4AsText <$> decls)
 
 concept :: Atom -> Text
-concept (MkAtom n) = "ONE CONCEPT " <> asText (renderName (atomMapping n)) <> " END"
+concept (MkAtom n) = "ONE CONCEPT " <> lam4Name (atomMapping n) <> " END"
 
 prelude :: Text
 prelude = Text.unlines
