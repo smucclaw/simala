@@ -80,9 +80,14 @@ evalDecl (Rec t n e) = do
   let env' = singletonEnv n VBlackhole
   env <- getEnv
   v <- withEnv (extendEnv env env') (evalWithTransparency t n e)
-  MkClosure _ ns body envc <- expectFunction v
-  let env'' = singletonEnv n v'
-      v' = VClosure (MkClosure t ns body (extendEnv envc env''))
+  let
+    env'' = singletonEnv n v'
+    v' =
+      case v of
+        -- if we get a closure, we actually replace the blackhole in the closure environment
+        VClosure (MkClosure _ ns body envc) -> VClosure (MkClosure t ns body (extendEnv envc env''))
+        _ -> v -- TODO: we could be doing something better for lists and in particular records, but
+               -- currently we just fall back to non-recursive let
   pure env''
 evalDecl (Eval e) = do
   env <- getEnv
