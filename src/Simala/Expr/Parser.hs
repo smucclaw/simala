@@ -233,6 +233,7 @@ builtins =
     , ("ceiling", Ceiling)
     , ("fromInt", FromInt)
     , ("explode", Explode)
+    , ("typeof", TypeOf)
     ]
 
 decl :: Parser Decl

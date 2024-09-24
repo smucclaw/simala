@@ -390,6 +390,21 @@ evalBuiltin Explode es = do
 evalBuiltin Append es = do
   (s1, s2) <- expect2Strings es
   pure $ VString (s1 <> s2)
+evalBuiltin TypeOf es = do
+  e <- expectArity1 es
+  v <- eval e
+  pure $ VAtom (atomFor (valTy v))
+
+atomFor :: ValTy -> Name
+atomFor TInt       = "int"
+atomFor TBool      = "bool"
+atomFor TString    = "string"
+atomFor TFrac      = "frac"
+atomFor TList      = "list"
+atomFor TRecord    = "record"
+atomFor TFun       = "fun"
+atomFor TAtom      = "atom"
+atomFor TBlackhole = "blackhole"
 
 doEvalDeclsTracing :: TraceMode -> Env -> [Decl] -> IO Env
 doEvalDeclsTracing tracing env ds =
