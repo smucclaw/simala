@@ -172,7 +172,7 @@ atomMapping x = x -- TODO: unsafe
 
 lam4Name :: Name -> Text
 lam4Name n
-  | needsQuoting n = lam4Mangle n -- "`" <> n <> "`"
+  | needsQuoting n = "`" <> n <> "`" -- lam4Mangle n -- "`" <> n <> "`"
   | otherwise      = n
 
 lam4Mangle :: Name -> Text
