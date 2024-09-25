@@ -38,7 +38,7 @@ data ReplCommand =
   deriving stock Show
 
 data Expr =
-    Builtin    Builtin [Expr]              -- built-ins; the currently decide their own eval strategy, so can be used for control flow
+    Builtin    Builtin [Expr]              -- built-ins; they currently decide their own eval strategy, so can be used for control flow
   | Var        Name
   | Atom       Name                        -- for simulating enumeration types
   | Lit        Lit
@@ -95,6 +95,7 @@ data Builtin =
   | FromInt    -- ^ Convert an integer to a fractional, arity 1
   | Explode    -- ^ Explode a string into a list of single-character strings, arity 1
   | Append     -- ^ Append two strings, arity 2
+  | TypeOf     -- ^ run-time type checking, arity 1, returns an atom indicating the type
   deriving stock Show
 
 -- | A value.
