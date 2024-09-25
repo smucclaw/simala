@@ -139,7 +139,7 @@ instance Render Builtin where
   render FromInt    = "fromInt"
   render Explode    = "explode"
   render Append     = "append"
-  render TypeOf     = "typeof"
+  render TypeOf     = "typeOf"
 
 instance Render Lit where
   render :: Lit -> Text
