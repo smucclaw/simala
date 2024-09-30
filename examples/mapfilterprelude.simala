@@ -1,3 +1,5 @@
+-- ! prelude.simala
+
 -- run this for example via:
 --
 -- cabal run -- simala examples/prelude.simala examples/mapfilterprelude.simala

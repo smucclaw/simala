@@ -1,0 +1,5 @@
+id = <fun/1>
+cons = <fun/1>
+map = <fun/2>
+filter = <fun/2>
+[6,12,18,24,30]

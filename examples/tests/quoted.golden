@@ -1,0 +1,5 @@
+`this is a variable` = 3
+`this is another variable` = 22
+`atoms can be quoted too` = 'see here
+`a record` = {`field 1` = 'see here}
+66
