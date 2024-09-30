@@ -59,10 +59,13 @@ test-suite simala-test
   type: exitcode-stdio-1.0
   hs-source-dirs: tests
   main-is: Main.hs
+  other-modules:
+    Paths_simala
   build-depends:
     base,
     directory,
     filepath,
+    Glob,
     hspec,
     hspec-golden,
     silently,

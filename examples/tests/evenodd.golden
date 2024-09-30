@@ -1,0 +1,6 @@
+/home/andres/repos/well-typed/cclaw/simala/./examples/evenodd.simala:5:1:
+  |
+5 | let rec evenodd = fun (unused) =>
+  | ^
+unexpected 'l'
+expecting end of input

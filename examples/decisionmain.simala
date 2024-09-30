@@ -1,3 +1,5 @@
+-- ! decisiondecl.simala decisioninput.json
+
 -- run this for example via:
 --
 -- cabal run -- simala examples/decisiondecl.simala examples/decisioninput.json examples/decisionmain.simala
