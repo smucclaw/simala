@@ -110,7 +110,7 @@ operatorTable =
       -- NOTE: I've chosen 6 over 5 because it is easier to handle with lookahead / try due to both + and ++ being operators
     ]
     -- 5
-  , [ binaryr ":" Cons
+  , [ binaryr ":" mkCons
     ]
     -- 4
   , [ binaryl ">=" (builtin2 Ge)
@@ -153,7 +153,7 @@ baseExpr =
       mkLet <$ keyword "let" <*> decls <* keyword "in" <*> expr
   <|> Fun <$ keyword "fun" <*> transparency <*> argsOf name <* symbol "=>" <*> expr
   <|> mkIfThenElse <$ keyword "if" <*> expr <* keyword "then" <*> expr <* keyword "else" <*> expr
-  <|> List <$> between (symbol "[") (symbol "]") (sepBy expr (symbol ","))
+  <|> mkList <$> between (symbol "[") (symbol "]") (sepBy expr (symbol ","))
   <|> Record <$> between (symbol "{") (symbol "}") (row (symbol "=") expr)
   <|> Lit <$> lit
   <|> Var <$> name

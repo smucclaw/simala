@@ -9,7 +9,7 @@ import qualified Data.Aeson.KeyMap as KeyMap
 
 jsonToExpr :: Value -> Expr
 jsonToExpr (Object o)   = Record ((\ (k, v) -> (Key.toText k, jsonToExpr v)) <$> KeyMap.toList o)
-jsonToExpr (Array a)    = List (jsonToExpr <$> toList a)
+jsonToExpr (Array a)    = mkList (jsonToExpr <$> toList a)
 jsonToExpr (String txt) = Atom txt
 jsonToExpr (Number n)   = Lit (IntLit (floor n))
 jsonToExpr (Bool b)     = Lit (BoolLit b)

@@ -42,9 +42,7 @@ data Expr =
   | Var        Name
   | Atom       Name                        -- for simulating enumeration types
   | Lit        Lit
-  | Cons       Expr Expr                   -- should be a built-in?
-  | List       [Expr]                      -- construct a list
-  | App        Expr [Expr]                 -- function application
+  | App        Expr [Expr]                 -- function application (not a built-in because it's so fundamental)
   | Record     (Row Expr)                  -- record construction
   | Project    Expr Name                   -- record projection
   | Fun        Transparency [Name] Expr    -- anonymous function
@@ -96,6 +94,8 @@ data Builtin =
   | Explode    -- ^ Explode a string into a list of single-character strings, arity 1
   | Append     -- ^ Append two strings, arity 2
   | TypeOf     -- ^ run-time type checking, arity 1, returns an atom indicating the type
+  | Cons       -- ^ cons for lists, arity 2
+  | List       -- ^ construct a list, flexible arity
   deriving stock Show
 
 -- | A value.
@@ -201,3 +201,11 @@ mkIfThenElse c t e = Builtin IfThenElse [c, t, e]
 -- | Helper function to create a nested let expression.
 mkLet :: [Decl] -> Expr -> Expr
 mkLet ds e = foldr Let e ds
+
+-- | Helper function to create a cons.
+mkCons :: Expr -> Expr -> Expr
+mkCons x xs = Builtin Cons [x, xs]
+
+-- | Helper function to create a list.
+mkList :: [Expr] -> Expr
+mkList xs = Builtin List xs
