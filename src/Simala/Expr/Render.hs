@@ -46,7 +46,7 @@ instance Render Expr where
   renderAtPrio _ (Record r)         = renderRow " = " r
   renderAtPrio p (Project e n)      = parensIf (p > 9) (renderAtPrio 9 e <> "." <> render n)
   renderAtPrio p (Fun t args e)     = parensIf (p > 0) ("fun" <> renderTransparency t <> " " <> renderArgs args <> " => " <> render e)
-  renderAtPrio p (Let d e)          = parensIf (p > 0) ("let" <> renderAtPrio 0 d <> " in " <> render e)
+  renderAtPrio p (Let d e)          = parensIf (p > 0) ("let " <> renderAtPrio 0 d <> " in " <> render e)
   renderAtPrio p (App e es)         = parensIf (p > 9) (renderAtPrio 9 e <> renderArgs es)
   renderAtPrio _ Undefined          = "undefined"
 
