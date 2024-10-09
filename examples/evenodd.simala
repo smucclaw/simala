@@ -3,7 +3,7 @@
 -- better if recursive declarations would work for non-functions.
 --
 rec evenodd = fun (unused) =>
-  { even = fun (x) => x == 0 || evenodd(unused).odd(x - 1)
+  { even = fun (x) => x == 0 || not(evenodd(unused).odd(x))
   , odd  = fun (x) => x == 1 || evenodd(unused).even(x - 1)
   };
 #eval evenodd('irrelevant).even(20)
