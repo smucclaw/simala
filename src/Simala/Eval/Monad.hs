@@ -57,14 +57,17 @@ simplifyEvalTrace' (Trace mn e subs v) =
     subs' = mapMaybe simplifyEvalTrace' subs
     t' = Trace mn e subs' v
   in
-    -- NOTE: We do not simply subtraces with explicit names, because
+    -- NOTE: We do not simplify subtraces with explicit names, because
     -- we assume they're supposed to be seen in the trace.
+    --
+    -- TODO: This needs more documentation, as I currently don't understand
+    -- this anymore.
     case t' of
-      Trace Nothing (Lit _)    [] _ -> Nothing
-      Trace Nothing (List _)   [] _ -> Nothing
-      Trace Nothing (Record _) [] _ -> Nothing
-      Trace Nothing (Atom _)   [] _ -> Nothing
-      _                             -> Just t'
+      Trace Nothing (Lit _)          [] _ -> Nothing
+      Trace Nothing (Record _)       [] _ -> Nothing
+      Trace Nothing (Atom _)         [] _ -> Nothing
+      Trace Nothing (Builtin List _) [] _ -> Nothing
+      _                                   -> Just t'
 
 simplifyEvalTrace :: EvalTrace -> EvalTrace
 simplifyEvalTrace t@(Trace mn e subs v) =

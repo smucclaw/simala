@@ -42,14 +42,6 @@ eval' (Var x)             = look x
 eval' (Atom x)            = pure (VAtom x)
 eval' Undefined           = crash
 eval' (Lit l)             = evalLit l
-eval' (List ls)           = do
-  vs <- traverse eval ls
-  pure (VList vs)
-eval' (Cons e1 e2)        = do
-  v1 <- eval e1
-  v2 <- eval e2
-  vs <- expectList v2
-  pure (VList (v1 : vs))
 eval' (Record r)          = do
   vs <- traverse (\ (x, e) -> (x,) <$> eval e) r
   pure (VRecord vs)
@@ -394,6 +386,15 @@ evalBuiltin TypeOf es = do
   e <- expectArity1 es
   v <- eval e
   pure $ VAtom (atomFor (valTy v))
+evalBuiltin Cons es   = do
+  (e1, e2) <- expectArity2 es
+  v1 <- eval e1
+  v2 <- eval e2
+  vs <- expectList v2
+  pure (VList (v1 : vs))
+evalBuiltin List es   = do
+  vs <- traverse eval es
+  pure (VList vs)
 
 atomFor :: ValTy -> Name
 atomFor TInt       = "int"

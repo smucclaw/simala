@@ -41,8 +41,6 @@ instance Render Expr where
   renderAtPrio _ (Var x)            = render x
   renderAtPrio _ (Atom x)           = "'" <> render x
   renderAtPrio _ (Lit l)            = render l
-  renderAtPrio p (Cons e1 e2)       = renderBinopr 5 " : " p e1 e2
-  renderAtPrio _ (List es)          = renderList es
   renderAtPrio _ (Record r)         = renderRow " = " r
   renderAtPrio p (Project e n)      = parensIf (p > 9) (renderAtPrio 9 e <> "." <> render n)
   renderAtPrio p (Fun t args e)     = parensIf (p > 0) ("fun" <> renderTransparency t <> " " <> renderArgs args <> " => " <> render e)
@@ -95,6 +93,8 @@ renderBuiltin p And        [e1, e2]     = renderBinopr 3 " && " p e1 e2
 renderBuiltin p Or         [e1, e2]     = renderBinopr 2 " || " p e1 e2
 renderBuiltin p IfThenElse [e1, e2, e3] =
   parensIf (p > 0) ("if " <> render e1 <> " then " <> render e2 <> " else " <> render e3)
+renderBuiltin p Cons       [e1, e2]     = renderBinopr 5 " : " p e1 e2
+renderBuiltin _ List       es           = renderList es
 renderBuiltin _ b          es           = render b <> renderArgs es
 
 renderBinopl :: (Render a1, Render a2) => Int -> Text -> Int -> a1 -> a2 -> Text
@@ -140,6 +140,8 @@ instance Render Builtin where
   render Explode    = "explode"
   render Append     = "append"
   render TypeOf     = "typeOf"
+  render Cons       = "cons"
+  render List       = "list"
 
 instance Render Lit where
   render :: Lit -> Text
