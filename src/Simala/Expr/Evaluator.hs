@@ -460,4 +460,4 @@ renderIntermediateResult :: Either EvalError Val -> IO ()
 renderIntermediateResult r =
   case r of
     Left err -> print err
-    Right x  -> Text.putStrLn (render x)
+    Right x  -> Text.putStrLn (renderAsText x)

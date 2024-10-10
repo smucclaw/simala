@@ -12,9 +12,17 @@ import Data.Bifunctor
 renderFullTrace :: EvalTrace -> Text
 renderFullTrace = go 1
   where
-    go lvl (Trace (Just n) e subs v) = line lvl ">" (render n <> " = " <> render e) <> Text.concat (map (go (lvl + 1)) subs) <> renderResult lvl (Just n) v
+    go lvl (Trace (Just n) e subs v) = line lvl ">" (render n <+> "=" <+> render e) <> Text.concat (map (go (lvl + 1)) subs) <> renderResult lvl (Just n) v
     go lvl (Trace Nothing  e subs v) = line lvl ">" (render e) <> Text.concat (map (go (lvl + 1)) subs) <> renderResult lvl Nothing v -- line lvl '<' (render v)
-    line lvl c msg = Text.replicate (lvl * 3) c <> " " <> msg <> "\n"
+    line :: Int -> Text -> Doc ann -> Text
+    line lvl c doc =
+      case Text.lines (asText doc) of
+        [] -> ""
+        (ini : rest) ->
+          Text.unlines
+            ( Text.replicate (lvl * 3) c <> " " <> ini
+            : (((Text.replicate (lvl * 3) "." <> " ") <>) <$> rest)
+            )
     renderResult :: Int -> Maybe Name -> Either EvalError Val -> Text
     renderResult lvl (Just n) (Right x) = line lvl "<" (render n <> " = " <> render x)
     renderResult lvl (Just n) (Left x)  = line lvl "*" (render n <> " aborted with " <> render x)
@@ -26,8 +34,8 @@ renderResultsTrace = go
   where
     go (Trace mn _ subs v) = Text.concat (map go subs) <> renderResult mn v
     renderResult :: Maybe Name -> Either EvalError Val -> Text
-    renderResult (Just n) (Right x) = render n <> " = " <> render x <> "\n"
-    renderResult (Just n) (Left x)  = render n <> " aborted with " <> render x <> "\n"
+    renderResult (Just n) (Right x) = asText (render n <+> "=" <+> render x) <> "\n"
+    renderResult (Just n) (Left x)  = asText (render n <+> "aborted with " <+> render x) <> "\n"
     renderResult Nothing  _         = ""
 
 buildEvalTrace :: [EvalAction] -> EvalTrace
