@@ -11,7 +11,6 @@
 module TransitionSystem (printAut, currAut)  where
 
 import Base hiding (State, lift)
-import qualified Base.Map as Map
 import qualified Data.Set as Set
 import Data.List ( intersperse )
 import Data.Graph.Inductive.Graph
@@ -250,8 +249,8 @@ minAut aut =
 
 -- State: a location and associated variable assignments
 data State l = State {
-    currLoc :: l
-  , assignments :: Map Var Val
+    currLoc :: !l
+  , assignments :: !Env
   }
   deriving stock Show
 
@@ -264,7 +263,7 @@ valOfLit (BoolLit b) = VBool b
 valOfLit (FracLit f) = VFrac f
 valOfLit (StringLit s) = VString s
 
-evalExpr :: Map Var Val -> Expr -> Val
+evalExpr :: Env -> Expr -> Val
 evalExpr env e =
   case fst (runEval (withEnv env (eval e))) of
     Left err -> error (show err)
@@ -275,19 +274,19 @@ isTrue (VBool b) = b
 isTrue _ = False
 
 initialState :: Aut l -> State l
-initialState a = State (initialLocOfAut a) Map.empty
+initialState a = State (initialLocOfAut a) emptyEnv
 
-evalGuard :: Map Var Val -> TransitionGuard -> Val
+evalGuard :: Env -> TransitionGuard -> Val
 evalGuard = evalExpr
 
 enabledInState :: Transition l -> State l -> Bool
 enabledInState tr s = isTrue (evalGuard (assignments s) (guardOfTransition tr))
 
-execCmd :: Map Var Val -> Cmd -> Map Var Val
-execCmd assm (VAssign vr e) = Map.insert vr (evalExpr assm e) assm
+execCmd :: Env -> Cmd -> Env
+execCmd assm (VAssign vr e) = addToEnv vr (evalExpr assm e) assm
 
-execAction :: Map Var Val -> TransitionAction -> Map Var Val
-execAction = Prelude.foldl execCmd
+execAction :: Env -> TransitionAction -> Env
+execAction = foldl' execCmd
 
 stepTransition :: State l -> Transition l -> (Transition l, State l)
 stepTransition s tr = (tr, State (targetOfTransition tr) (execAction (assignments s) (actionOfTransition tr)))
@@ -334,7 +333,7 @@ variableHasIntValS v p s =
   let test vl = case vl of
                   VInt i -> p i
                   _ -> False
-  in maybe False test (Map.lookup v (assignments s))
+  in maybe False test (lookupInEnv v (assignments s))
 
 variableHasIntValTr :: Var -> (Int -> Bool) -> Trace l -> Bool
 variableHasIntValTr v p (s, _) =  variableHasIntValS v p s
@@ -347,7 +346,7 @@ variableHasBoolValS v s =
   let test vl = case vl of
                   VBool b -> b
                   _ -> False
-  in maybe False test (Map.lookup v (assignments s))
+  in maybe False test (lookupInEnv v (assignments s))
 
 variableHasBoolValTr :: Var -> Trace l -> Bool
 variableHasBoolValTr v (s, _) =  variableHasBoolValS v s
@@ -651,12 +650,38 @@ printAut a = print (showImp (autToImp a))
 -- Some tests
 ----------------------------------------------------------------------------------------
 
+--
+-- automaton autA
+--   states
+--     l1A, l2A, l3A
+--
+--   entry
+--     l1A
+--
+--   transitions
+--     l1A -- !c1 -> l2A with x = 3
+--     l1A --->      l3A with x = 4
+--
+
 transA :: [Transition Text]
 transA = [ Transition "l1A" (bl True) (SendSync "c1") [VAssign "x" (il 3)] "l2A"
          , Transition "l1A" (bl True) NoSync [VAssign "x" (il 4)] "l3A"
          ]
 autA :: Aut Text
 autA = Aut "autA" ["l1A", "l2A", "l3A"] transA "l1A"
+
+--
+-- automaton autA
+--   locations
+--     l1A, l2A, l3A
+--
+--   entry
+--     l1A
+--
+--   transitions
+--     l1A -- !c1 -> l2A
+--     l1A -- !c2 -> l3A
+--
 
 transAm :: [Transition Text]
 transAm = [ Transition "l1A" (bl True) (SendSync "c1") [] "l2A"
@@ -665,11 +690,35 @@ transAm = [ Transition "l1A" (bl True) (SendSync "c1") [] "l2A"
 autAm :: Aut Text
 autAm = Aut "autA" ["l1A", "l2A", "l3A"] transAm "l1A"
 
+--
+-- automaton autB
+--   locations
+--     l1B, l2B
+--
+--   entry
+--     l1B
+--
+--   transitions
+--     l1B -- ?c1 -> l2B
+--
+
 transB :: [Transition Text]
 transB = [ Transition "l1B" (bl True) (RecvSync "c1") [] "l2B"
          ]
 autB :: Aut Text
 autB = Aut "autB" ["l1B", "l2B"] transB "l1B"
+
+--
+-- automaton autC
+--   locations
+--     l1C, l2C
+--
+--   entry
+--     l2C
+--
+--   transitions
+--     l1C ---> l2C with x = 5
+--
 
 transC :: [Transition Text]
 transC = [ Transition "l1C" (bl True) NoSync [VAssign "x" (il 5)] "l2C"
@@ -677,6 +726,12 @@ transC = [ Transition "l1C" (bl True) NoSync [VAssign "x" (il 5)] "l2C"
 
 autC :: Aut Text
 autC = Aut "autC" ["l1C", "l2C"] transC "l1C"
+
+--
+--  system x
+--    channels c1, c2
+--    automata autA, autB
+--
 
 sysAB :: Sys Text
 sysAB = Sys ["x"] ["c1", "c2"] [autA, autB]
@@ -696,6 +751,35 @@ sysABC = Sys ["x"] ["c1", "c2"] [autA, autB, autC]
 ----------------------------------------------------------------------------------------
 -- Company purchase case study
 ----------------------------------------------------------------------------------------
+
+--
+-- automaton Company
+--
+--   locations
+--     independent, acquisitionInCourse, sold
+--
+--   entry
+--     independent
+--
+--   transitions
+--     independent -- ?startAcquisition -> acquisitionInCourse
+--     acquisitionInCourse -- ?payment -> acquisitionInCourse
+--     acquisitionInCourse -- ?endAcquisition -> sold
+--
+--
+-- automaton MAS
+--
+--   locations
+--     masInit, masConsulted
+--
+--   entry
+--     masInit
+--
+--   transitions
+--     masInit -- ?requestPermission -> masConsulted
+--     masConsulted -- !grantPermission -> masInit
+--     masConsulted -- !refusePermission -> masInit
+--
 
 companyAut :: Aut Text
 companyAut = Aut {
