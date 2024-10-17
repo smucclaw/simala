@@ -186,6 +186,10 @@ emptyEnv = Map.empty
 extendEnv :: Env -> Env -> Env
 extendEnv = flip Map.union
 
+-- | Extend an environment with a single binding.
+addToEnv :: Name -> Val -> Env -> Env
+addToEnv = Map.insert
+
 -- | An environment with a single binding.
 singletonEnv :: Name -> Val -> Env
 singletonEnv n v = Map.singleton n v
