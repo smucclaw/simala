@@ -67,8 +67,9 @@ instance AsLam4 Expr where
   lam4AtPrio _ Undefined         = lam4 (atomMapping "undefined")
 
 lam4Builtin :: Int -> Builtin -> [Expr] -> Doc ann
-lam4Builtin _p List      []           = "EMPTY_LIST "
-lam4Builtin _p List      es           = "LIST_OF " <> lam4Commas es
+lam4Builtin p Cons       [e1, e2]     = lam4Binop 9 "followed_by_items_in" p e1 e2
+lam4Builtin _ List       []           = "EMPTY_LIST"
+lam4Builtin _ List       es           = "LIST_OF " <> lam4Commas es
 lam4Builtin p Minus      [e1, e2]     = lam4Binop 6 "-"  p e1 e2
 lam4Builtin p Sum        [e1, e2]     = lam4Binopl 6 "+"  p e1 e2
 lam4Builtin p Product    [e1, e2]     = lam4Binopl 7 "*"  p e1 e2
