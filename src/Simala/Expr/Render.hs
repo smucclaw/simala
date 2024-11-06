@@ -79,12 +79,15 @@ instance Render Expr where
     in
       parensIf (p > 0)
         (align (sep
-          [ "let" <+> align (vsep (punctuate ";" (render <$> ds)))
+          [ "let" <+> renderDecls ds
           , "in" <+> render body
           ]
         ))
   renderAtPrio p (App e es)     = parensIf (p > 9) (renderAtPrio 9 e <> renderArgs es)
   renderAtPrio _ Undefined      = "undefined"
+
+renderDecls :: [Decl] -> Doc ann
+renderDecls ds = align (vsep (punctuate ";" (render <$> ds)))
 
 -- | Detect nested lets in order to render them compactly.
 --
