@@ -12,7 +12,7 @@ import Text.Megaparsec.Char
 import Text.Megaparsec.State
 import qualified Text.Megaparsec.Char.Lexer as Lexer
 
-type Parser = Parsec Void Text
+type Lexer = Parsec Void Text
 
 -- | Megaparsec stores offsets as integers.
 type Offset = Int
@@ -57,9 +57,9 @@ data SrcPos =
 data TokenType =
     Identifier    !Text
   | Quoted        !Text
-  | IntegerLit    !Int
-  | FractionalLit !Double
-  | StringLit     !Text
+  | TIntLit       !Int
+  | TFracLit      !Double
+  | TStringLit    !Text
   | Directive     !Text
     -- parentheses
   | POpen
@@ -70,6 +70,7 @@ data TokenType =
   | SClose
     -- punctuation
   | Comma
+  | Semicolon
   | Dot
   | Implies
     -- symbolic operators
@@ -77,92 +78,104 @@ data TokenType =
   | Divides
   | Percent
   | Plus
-  | Minus
+  | TMinus
   | PlusPlus
-  | Cons
+  | Colon
   | GreaterEquals
   | LessEquals
   | GreaterThan
   | LessThan
   | Equals
+  | EqualsEquals
   | NotEquals
   | ApproxEquals
-  | And
-  | Or
+  | TAnd
+  | TOr
+  | Quote
   | OtherSymbolic !Text
     -- keywords
-  | TFalse
-  | TTrue
-  | TLet
-  | TLetrec
-  | TIn
-  | TIf
-  | TThen
-  | TElse
-  | TFun
-  | TUndefined
-  | TOpaque
-  | TTransparent
-  | TRec
+  | KFalse
+  | KTrue
+  | KLet
+  | KLetrec
+  | KIn
+  | KIf
+  | KThen
+  | KElse
+  | KFun
+  | KUndefined
+  | KOpaque
+  | KTransparent
+  | KRec
     -- space
-  | Space        !Text
+  | WhiteSpace   !Text
   | LineComment  !Text
   | BlockComment !Text
     -- other
   | EOF
-  deriving stock (Eq, Ord, Show)
+  deriving stock (Eq, Generic, Ord, Show)
 
-whitespace :: Parser Text
+whitespace :: Lexer Text
 whitespace =
   takeWhile1P (Just "whitespace") isSpace
 
-lineComment :: Parser Text
+lineComment :: Lexer Text
 lineComment =
   (<>) <$> string "--" <*> takeWhileP (Just "character") (/= '\n')
 
-blockComment :: Parser Text
+blockComment :: Lexer Text
 blockComment =
   (\ b (c, e) -> Text.concat (b : c ++ [e])) <$> string "{-" <*> manyTill_ inner (string "-}")
   where
     inner = blockComment <|> Text.singleton <$> anySingle
 
-stringLiteral :: Parser Text
+stringLiteral :: Lexer Text
 stringLiteral =
   char '"' *> (Text.pack <$> manyTill Lexer.charLiteral (char '"'))
 
 -- | A quoted identifier between backticks.
-quoted :: Parser Text
+quoted :: Lexer Text
 quoted =
   char '`' *> takeWhile1P (Just "printable char except backticks") (\ x -> isPrint x && not (x `elem` ("`" :: String))) <* char '`'
 
-directive :: Parser Text
+directive :: Lexer Text
 directive =
   char '#' *> identifier
 
-integerLiteral :: Parser Int
+integerLiteral :: Lexer Int
 integerLiteral =
       negate <$ string "-" <*> Lexer.decimal
   <|> Lexer.decimal
 
-fractionalLiteral :: Parser Double
+fractionalLiteral :: Lexer Double
 fractionalLiteral =
       negate <$ string "-" <*> Lexer.float
   <|> Lexer.float
 
-tokenPayload :: Parser TokenType
+tokenPayload :: Lexer TokenType
 tokenPayload =
-      FractionalLit <$> try fractionalLiteral
-  <|> IntegerLit <$> try integerLiteral
-  <|> StringLit <$> stringLiteral
-  <|> Quoted <$> quoted
-  <|> Space <$> whitespace
-  <|> LineComment <$> lineComment
+      TFracLit     <$> try fractionalLiteral
+  <|> TIntLit      <$> try integerLiteral
+  <|> TStringLit   <$> stringLiteral
+  <|> Quoted       <$> quoted
+  <|> WhiteSpace   <$> whitespace
+  <|> LineComment  <$> lineComment
   <|> BlockComment <$> blockComment
-  <|> Directive <$> directive
-  <|> identifierOrKeyword
+  <|> Directive    <$> directive
+  <|> POpen        <$ char '('
+  <|> PClose       <$ char ')'
+  <|> COpen        <$ char '{'
+  <|> CClose       <$ char '}'
+  <|> SOpen        <$ char '['
+  <|> SClose       <$ char ']'
+  <|> Comma        <$ char ','
+  <|> Semicolon    <$ char ';'
+  <|> Dot          <$ char '.'
+  <|> Quote        <$ char '\''
   <|> symbolic
+  <|> identifierOrKeyword
 
-symbolic :: Parser TokenType
+symbolic :: Lexer TokenType
 symbolic =
   do
     s <- symbolString
@@ -170,11 +183,11 @@ symbolic =
       Nothing -> pure (OtherSymbolic s)
       Just tt -> pure tt
 
-symbolString :: Parser Text
+symbolString :: Lexer Text
 symbolString =
-  takeWhile1P (Just "symbol char") (\ x -> isSymbol x || isPunctuation x && x /= '_')
+  takeWhile1P (Just "symbol char") (\ x -> x `elem` ("=<>+-*/:~&|%" :: [Char])) 
 
-identifierOrKeyword :: Parser TokenType
+identifierOrKeyword :: Lexer TokenType
 identifierOrKeyword =
   do
     i <- identifier
@@ -182,7 +195,7 @@ identifierOrKeyword =
       Nothing -> pure (Identifier i)
       Just tt -> pure tt
 
-identifier :: Parser Text
+identifier :: Lexer Text
 identifier =
   Text.cons
   <$> satisfy isAlpha
@@ -191,55 +204,48 @@ identifier =
 symbols :: Map Text TokenType
 symbols =
   Map.fromList
-    [ ("(" , POpen        )
-    , (")" , PClose       )
-    , ("{" , COpen        )
-    , ("}" , CClose       )
-    , ("[" , SOpen        )
-    , ("]" , SClose       )
-    , ("," , Comma        )
-    , ("." , Dot          )
-    , ("=>", Implies      )
+    [ ("=>", Implies      )
     , ("*" , Times        )
     , ("/" , Divides      )
     , ("%" , Percent      )
     , ("+" , Plus         )
-    , ("-" , Minus        )
+    , ("-" , TMinus       )
     , ("++", PlusPlus     )
-    , (":" , Cons         )
+    , (":" , Colon        )
     , (">=", GreaterEquals)
     , ("<=", LessEquals   )
     , (">" , GreaterThan  )
     , ("<" , LessThan     )
-    , ("==", Equals       )
+    , ("=" , Equals       )
+    , ("==", EqualsEquals )
     , ("~=", ApproxEquals )
-    , ("&&", And          )
-    , ("||", Or           )
+    , ("&&", TAnd         )
+    , ("||", TOr          )
     ]
 
 keywords :: Map Text TokenType
 keywords =
   Map.fromList
-    [ ("false"      , TFalse      )
-    , ("true"       , TTrue       )
-    , ("let"        , TLet        )
-    , ("letrec"     , TLetrec     )
-    , ("in"         , TIn         )
-    , ("if"         , TIf         )
-    , ("then"       , TThen       )
-    , ("else"       , TElse       )
-    , ("fun"        , TFun        )
-    , ("undefined"  , TUndefined  )
-    , ("opaque"     , TOpaque     )
-    , ("transparent", TTransparent)
-    , ("rec"        , TRec        )
+    [ ("false"      , KFalse      )
+    , ("true"       , KTrue       )
+    , ("let"        , KLet        )
+    , ("letrec"     , KLetrec     )
+    , ("in"         , KIn         )
+    , ("if"         , KIf         )
+    , ("then"       , KThen       )
+    , ("else"       , KElse       )
+    , ("fun"        , KFun        )
+    , ("undefined"  , KUndefined  )
+    , ("opaque"     , KOpaque     )
+    , ("transparent", KTransparent)
+    , ("rec"        , KRec        )
     ]
 
-rawTokens :: Parser [RawToken]
+rawTokens :: Lexer [RawToken]
 rawTokens = many (MkRawToken <$> getOffset <*> tokenPayload <*> getOffset)
 
-lex :: FilePath -> Text -> Either String [PosToken]
-lex filepath txt =
+execLexer :: FilePath -> Text -> Either String [PosToken]
+execLexer filepath txt =
   let
     r = runParser (rawTokens <* eof) filepath txt
   in
@@ -391,9 +397,9 @@ displayPosToken (MkPosToken _r tt) =
   case tt of
     Identifier t    -> t
     Quoted t        -> "`" <> t <> "`"
-    IntegerLit i    -> Text.pack (show i) -- it'd probably be better to store the text, so that we can reproduce it
-    FractionalLit d -> Text.pack (show d) -- it'd probably be better to store the text, so that we can reproduce it
-    StringLit s     -> Text.pack (show s) -- ideally, this should be fine, because we use the Haskell escape sequences
+    TIntLit i       -> Text.pack (show i) -- it'd probably be better to store the text, so that we can reproduce it
+    TFracLit d      -> Text.pack (show d) -- it'd probably be better to store the text, so that we can reproduce it
+    TStringLit s    -> Text.pack (show s) -- ideally, this should be fine, because we use the Haskell escape sequences
     Directive s     -> "#" <> s
     POpen           -> "("
     PClose          -> ")"
@@ -402,39 +408,42 @@ displayPosToken (MkPosToken _r tt) =
     SOpen           -> "["
     SClose          -> "]"
     Comma           -> ","
+    Semicolon       -> ";"
     Dot             -> "."
     Implies         -> "=>"
     Times           -> "*"
     Divides         -> "/"
     Percent         -> "%"
     Plus            -> "+"
-    Minus           -> "-"
+    TMinus          -> "-"
     PlusPlus        -> "++"
-    Cons            -> ":"
+    Colon           -> ":"
     GreaterEquals   -> ">="
     LessEquals      -> "<="
     GreaterThan     -> ">"
     LessThan        -> "<"
-    Equals          -> "=="
+    Equals          -> "="
+    EqualsEquals    -> "=="
     NotEquals       -> "/="
     ApproxEquals    -> "!="
-    And             -> "&&"
-    Or              -> "||"
+    TAnd            -> "&&"
+    TOr             -> "||"
+    Quote           -> "'"
     OtherSymbolic t -> t
-    TFalse          -> "false"
-    TTrue           -> "true"
-    TLet            -> "let"
-    TLetrec         -> "letrec"
-    TIn             -> "in"
-    TIf             -> "if"
-    TThen           -> "then"
-    TElse           -> "else"
-    TFun            -> "fun"
-    TUndefined      -> "undefined"
-    TOpaque         -> "opaque"
-    TTransparent    -> "transparent"
-    TRec            -> "rec"
-    Space t         -> t
+    KFalse          -> "false"
+    KTrue           -> "true"
+    KLet            -> "let"
+    KLetrec         -> "letrec"
+    KIn             -> "in"
+    KIf             -> "if"
+    KThen           -> "then"
+    KElse           -> "else"
+    KFun            -> "fun"
+    KUndefined      -> "undefined"
+    KOpaque         -> "opaque"
+    KTransparent    -> "transparent"
+    KRec            -> "rec"
+    WhiteSpace t    -> t
     LineComment t   -> t
     BlockComment t  -> t
     EOF             -> ""

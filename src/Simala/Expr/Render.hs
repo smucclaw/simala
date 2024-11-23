@@ -3,7 +3,7 @@ module Simala.Expr.Render where
 import Base
 import qualified Base.Text as Text
 
-import Simala.Expr.Parser (simpleName)
+import Simala.Expr.Lexer (identifier)
 import Simala.Expr.Type
 import Simala.Eval.Type
 
@@ -114,7 +114,7 @@ renderName n
 --
 needsQuoting :: Name -> Bool
 needsQuoting n =
-  isNothing (parseMaybe (simpleName <* eof) n)
+  isNothing (parseMaybe (identifier <* eof) n)
 
 instance Render Transparency where
   render = renderTransparency
