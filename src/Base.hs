@@ -12,6 +12,7 @@ import Data.IORef as X
 import Data.Foldable as X
 import Data.Kind as X
 import Data.List as X
+import Data.List.NonEmpty as X (NonEmpty(..), nonEmpty)
 import Data.Map.Strict as X (Map, (!))
 import Data.Maybe as X
 import Data.Set as X (Set)

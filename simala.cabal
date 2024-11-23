@@ -10,6 +10,8 @@ common defaults
   default-extensions:
     DerivingStrategies
     DerivingVia
+    DuplicateRecordFields
+    NoFieldSelectors
     OverloadedRecordDot
     OverloadedStrings
     OverloadedLabels
@@ -40,6 +42,7 @@ library
     Simala.Eval.Monad
     Simala.Eval.Type
     Simala.Expr.Evaluator
+    Simala.Expr.Lexer
     Simala.Expr.Parser
     Simala.Expr.Render
     Simala.Expr.Type
