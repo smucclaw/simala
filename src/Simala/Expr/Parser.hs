@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 module Simala.Expr.Parser where
 
 import Base
@@ -7,12 +8,35 @@ import qualified Base.Text as Text
 import Simala.Expr.Lexer
 import Simala.Expr.Type
 
+import Control.Arrow (second)
 import Control.Monad.Combinators.Expr
 import Optics
 import Text.Megaparsec
-import qualified Text.Megaparsec.Char.Lexer as Lexer
+import Simala.Expr.Metadata
 
 type Parser = Parsec Void TokenStream
+
+data WithWs a = WithWs [PosToken] a
+  deriving stock Show
+  deriving (Functor)
+
+wsMeta :: [WithWs PosToken] -> Meta
+wsMeta = mkMeta . fmap mkClusterMeta
+
+mkClusterMeta :: WithWs PosToken -> ClusterMeta
+mkClusterMeta (WithWs after posToken) =
+  ClusterMeta
+    { thisToken = mkTokenCluster [posToken]
+    , afterThisToken = mkTokenCluster after
+    , label = tokenTypeLabel posToken.payload
+    }
+
+unWs :: WithWs a -> a
+unWs (WithWs _ a) = a
+
+instance Applicative WithWs where
+  pure a = WithWs [] a
+  WithWs ps f <*> WithWs ps2 x = WithWs (ps <> ps2) (f x)
 
 spaces :: Parser ()
 spaces =
@@ -26,20 +50,22 @@ isSpaceToken t =
     BlockComment _ -> True
     _              -> False
 
-lexeme :: Parser a -> Parser a
-lexeme =
-  Lexer.lexeme spaces
+lexeme :: Parser a -> Parser (WithWs a)
+lexeme p = do
+  a <- p
+  ws <- many (satisfy isSpaceToken)
+  pure $ WithWs ws a
 
 -- | A token parser for a token type that has no flexible content, plus subsequent whitespace.
-stok :: TokenType -> Parser ()
+stok :: TokenType -> Parser (WithWs PosToken)
 stok tt =
   lexeme (stok' tt)
 
 -- | A token parser for a token type that has no flexible content, no whitespace.
-stok' :: TokenType -> Parser ()
+stok' :: TokenType -> Parser PosToken
 stok' tt =
   token
-    (\ t -> if t.payload == tt then Just () else Nothing)
+    (\ t -> if t.payload == tt then Just t else Nothing)
     (Set.singleton (Tokens (trivialToken tt :| [])))
 
 trivialToken :: TokenType -> PosToken
@@ -52,46 +78,51 @@ trivialToken tt =
     trivialPos :: SrcPos
     trivialPos = MkSrcPos "" 0 0
 
-tok :: (TokenType -> Maybe a) -> String -> Parser a
+tok :: (TokenType -> Maybe a) -> String -> Parser (WithWs (PosToken, a))
 tok p lbl =
   lexeme
     (token
-      (\ t -> p t.payload)
+      (\ t -> fmap (t,) $ p t.payload)
       Set.empty
     )
   <?> lbl
 
-quotedName :: Parser Name
+quotedName :: Parser (WithWs (PosToken, Name))
 quotedName =
   tok (preview #_Quoted) "quoted identifier"
 
-simpleName :: Parser Name
+simpleName :: Parser (WithWs (PosToken, Name))
 simpleName =
   tok (preview #_Identifier) "simple identifier"
 
-name :: Parser Name
+name :: Parser (WithWs (PosToken, Name))
 name =
   (quotedName <|> simpleName) <?> "identifier"
 
-fracLit :: Parser Double
+variable :: Parser Variable
+variable = do
+  WithWs ws (origToken, n) <- (quotedName <|> simpleName) <?> "identifier"
+  pure $ Variable (wsMeta [WithWs ws origToken]) n
+
+fracLit :: Parser (WithWs (PosToken, Double))
 fracLit =
   tok (preview #_TFracLit) "fractional literal"
 
-intLit :: Parser Int
+intLit :: Parser (WithWs (PosToken, Int))
 intLit =
   tok (preview #_TIntLit) "integer literal"
 
-stringLit :: Parser Text
+stringLit :: Parser (WithWs (PosToken, Text))
 stringLit =
   tok (preview #_TStringLit) "string literal"
 
-sdirective :: Text -> Parser ()
+sdirective :: Text -> Parser (WithWs PosToken)
 sdirective d =
-  lexeme (void (stok' (Directive d)))
+  stok (Directive d)
 
-sidentifier :: Text -> Parser ()
+sidentifier :: Text -> Parser (WithWs PosToken)
 sidentifier n =
-  lexeme (void (stok' (Identifier n)))
+  stok (Identifier n)
 
 expr :: Parser Expr
 expr =
@@ -102,8 +133,8 @@ expr =
 operatorTable :: [[Operator Parser Expr]]
 operatorTable =
   [ [ postfix -- we allow mixed chains of function applications and record projections
-        (   flip Project <$> (stok Dot *> name)
-        <|> flip mkApp <$> argsOf expr
+        (   (\(dotWs, var) e -> Project (wsMeta [dotWs]) e var)  <$> ((,) <$> stok Dot <*> variable)
+        <|> (\(open, (args, seps), close) e -> mkApp (wsMeta $ [open] <> seps <> [close]) e args) <$> argsOf expr
         )
     ]
     -- 7
@@ -145,71 +176,174 @@ prefix p = Prefix (foldr (.) id <$> some p)
 postfix :: Parser (Expr -> Expr) -> Operator Parser Expr
 postfix p = Postfix (foldr (flip (.)) id <$> some p)
 
-binaryl :: TokenType -> (Expr -> Expr -> Expr) -> Operator Parser Expr
+binaryl :: TokenType -> (Meta -> Expr -> Expr -> Expr) -> Operator Parser Expr
 binaryl op f =
-  InfixL (f <$ stok op)
+  InfixL $ do
+    opWs <- stok op
+    pure $ f (wsMeta [opWs])
 
-binaryr :: TokenType -> (Expr -> Expr -> Expr) -> Operator Parser Expr
+binaryr :: TokenType -> (Meta -> Expr -> Expr -> Expr) -> Operator Parser Expr
 binaryr op f =
-  InfixR (f <$ stok op)
+  InfixR $ do
+    opWs <- stok op
+    pure $ f (wsMeta [opWs])
 
-builtin2 :: Builtin -> Expr -> Expr -> Expr
-builtin2 f e1 e2 = Builtin f [e1, e2]
+builtin2 :: Builtin -> Meta -> Expr -> Expr -> Expr
+builtin2 f m e1 e2 = Builtin m f [e1, e2]
 
 baseExpr :: Parser Expr
 baseExpr =
-      mkLet <$ stok KLet <*> decls <* stok KIn <*> expr
-  <|> Fun <$ stok KFun <*> transparency <*> argsOf name <* stok Implies <*> expr
-  <|> mkIfThenElse <$ stok KIf <*> expr <* stok KThen <*> expr <* stok KElse <*> expr
-  <|> mkList <$> between (stok SOpen) (stok SClose) (sepBy expr (stok Comma))
-  <|> Record <$> between (stok COpen) (stok CClose) (row (stok Equals) expr)
-  <|> Lit <$> lit
-  <|> Var <$> name
-  <|> Atom <$ stok' Quote <*> name
-  <|> Undefined <$ stok KUndefined
-  <|> parens expr
+      letP
+  <|> funP
+  <|> ifThenElseP
+  <|> listP -- mkList <$> between (stok SOpen) (stok SClose) (sepBy expr (stok Comma))
+  <|> recordP -- Record <$> between (stok COpen) (stok CClose) (row (stok Equals) expr)
+  <|> litP -- Lit <$> lit
+  <|> varP -- Var <$> name
+  <|> atomP -- Atom <$ stok' Quote <*> name
+  <|> undefinedP -- Undefined <$ stok KUndefined
+  <|> parensP-- parens expr
+
+letP :: Parser Expr
+letP = do
+  l <- stok KLet
+  ds <- decls
+  inWs <- stok KIn
+  e <- expr
+  pure $ mkLet
+    (wsMeta [l, inWs])
+    ds
+    e
+
+funP :: Parser Expr
+funP = do
+  funTok <- stok KFun
+  transTok <- transparency
+  (open, (vars, commas), close) <- argsOf variable
+  impliesTok <- stok Implies
+  e <- expr
+  pure $ Fun
+    (mkMeta $ mconcat
+      [ [ mkClusterMeta funTok
+        , fst transTok
+        , mkClusterMeta open
+        ]
+      , fmap mkClusterMeta commas
+      , [ mkClusterMeta close
+        , mkClusterMeta impliesTok
+        ]
+      ]
+    )
+    (snd transTok)
+    vars
+    e
+
+ifThenElseP :: Parser Expr
+ifThenElseP = do
+  ifTok <- stok KIf
+  condExpr <- expr
+  thenTok <- stok KThen
+  thenExpr <- expr
+  elseTok <- stok KElse
+  elseExpr <- expr
+  pure $ mkIfThenElse
+    (wsMeta [ifTok, thenTok, elseTok])
+    condExpr
+    thenExpr
+    elseExpr
+
+listP :: Parser Expr
+listP = do
+  (open, (items, commas), close) <- betweenP (stok SOpen) (stok SClose) (sepByP expr (stok Comma))
+  pure $ mkList
+    (wsMeta $ [open] <> commas <> [close])
+    items
+
+recordP :: Parser Expr
+recordP = do
+  (open, rowExprs, close) <- betweenP (stok COpen) (stok CClose) (rows (stok Equals) expr)
+  pure $ Record
+    (wsMeta $ [open] <> [close])
+    rowExprs
+
+litP :: Parser Expr
+litP = do
+  l <- lit
+  pure $ Lit
+    (wsMeta [fmap fst l])
+    (snd $ unWs l)
+
+varP :: Parser Expr
+varP = do
+  n <- variable
+  pure $ Var emptyMeta n
+
+atomP :: Parser Expr
+atomP = do
+  quoteTok <- stok Quote
+  n <- variable
+  pure $ Atom (wsMeta [quoteTok]) n
+
+undefinedP :: Parser Expr
+undefinedP = do
+  undefinedTok <- stok KUndefined
+  pure $ Undefined (wsMeta [undefinedTok])
+
+parensP :: Parser Expr
+parensP = do
+  (open, e, close) <- betweenP (stok POpen) (stok PClose) expr
+  pure $ Parens
+    (wsMeta [open, close])
+    e
 
 -- | Parse a row of bindings. Parameterised over the
 -- parser separating names from payloads, and the payload
 -- parser.
 --
-row :: Parser sep -> Parser a -> Parser (Row a)
-row sep payload =
-  sepBy item (stok Comma)
-  where
-    item = (,) <$> name <* sep <*> payload
+rows :: Parser (WithWs PosToken) -> Parser a -> Parser (Rows a)
+rows sep payload = do
+  (rowsA, commas) <- sepByP (row sep payload) (stok Comma)
+  pure $ Rows
+    (wsMeta commas)
+    rowsA
+
+row :: Parser (WithWs PosToken) -> Parser a -> Parser (Row a)
+row sep payload = do
+  var <- variable
+  eqTok <- sep
+  a <- payload
+  pure $ Row
+    (wsMeta [eqTok])
+    var
+    a
 
 -- | Parse optional transparency. Missing transparency
 -- is assumed to be 'Transparnet'.
 --
-transparency :: Parser Transparency
+transparency :: Parser (ClusterMeta, Transparency)
 transparency =
-  option Transparent
-    (   Transparent <$ stok KTransparent
-    <|> Opaque      <$ stok KOpaque
+  option (mkHiddenClusterMeta KTransparent, Transparent)
+    (   ((,Transparent) . mkClusterMeta) <$> stok KTransparent
+    <|> ((,Opaque) . mkClusterMeta)      <$> stok KOpaque
     )
 
-argsOf :: Parser a -> Parser [a]
-argsOf p = between (stok POpen) (stok PClose) (sepBy p (stok Comma))
+argsOf :: Parser a -> Parser (WithWs PosToken, ([a], [WithWs PosToken]), WithWs PosToken)
+argsOf p = betweenP (stok POpen) (stok PClose) (sepByP p (stok Comma))
 
-lit :: Parser Lit
+lit :: Parser (WithWs (PosToken, Lit))
 lit =
-      FracLit <$> fracLit
-  <|> IntLit <$> intLit
-  <|> BoolLit False <$ stok KFalse
-  <|> BoolLit True  <$ stok KTrue
-  <|> StringLit <$> stringLit
+      fmap (second FracLit) <$> fracLit
+  <|> fmap (second IntLit) <$> intLit
+  <|> fmap (,BoolLit False) <$> stok KFalse
+  <|> fmap (,BoolLit True)  <$> stok KTrue
+  <|> fmap (second StringLit) <$> stringLit
 
-parens :: Parser a -> Parser a
-parens =
-  between (stok POpen) (stok PClose)
-
-mkApp :: Expr -> [Expr] -> Expr
-mkApp e@(Var n) es =
+mkApp :: Meta -> Expr -> [Expr] -> Expr
+mkApp m e@(Var mVar (Variable mInner n)) es =
   case Map.lookup n builtins of
-    Just b  -> Builtin b es
-    Nothing -> App e es
-mkApp e es = App e es
+    Just b  -> Builtin (mVar <> mInner <> m) b es
+    Nothing -> App m e es
+mkApp m e es = App m e es
 
 builtins :: Map Name Builtin
 builtins =
@@ -234,20 +368,70 @@ builtins =
 
 decl :: Parser Decl
 decl =
-      Eval   <$  sdirective "eval" <*> expr
-  <|> NonRec <$> transparency <*> name <* stok Equals <*> expr
-  <|> Rec    <$  stok KRec <*> transparency <*> name <* stok Equals <*> expr
+      evalDeclP
+  <|> nonRecDeclP
+  <|> recDeclP
+
+evalDeclP :: Parser Decl
+evalDeclP = do
+  evalDirective <- sdirective "eval"
+  e <- expr
+  pure $ Eval (wsMeta [evalDirective]) e
+
+nonRecDeclP :: Parser Decl
+nonRecDeclP = do
+  t <- transparency -- TODO: transparency is optional
+  var <- variable
+  eqTok <- stok Equals
+  e <- expr
+  pure $ NonRec
+    (mkMeta
+      [ fst t
+      , mkClusterMeta eqTok
+      ]
+    )
+    (snd t)
+    var
+    e
+
+recDeclP :: Parser Decl
+recDeclP = do
+  r <- stok KRec
+  t <- transparency -- TODO: transparency is optional
+  var <- variable
+  eqTok <- stok Equals
+  e <- expr
+  pure $ Rec
+    (mkMeta
+      [ mkClusterMeta r
+      , fst t
+      , mkClusterMeta eqTok
+      ]
+    )
+    (snd t)
+    var
+    e
 
 replEvalDecl :: Parser Decl
-replEvalDecl = Eval <$> expr
+replEvalDecl = do
+  e <- expr
+  pure $ Eval emptyMeta e
 
 decls :: Parser [Decl]
-decls =
-  sepEndBy decl (stok Semicolon)
+decls = do
+  (ds, semicolons) <- sepEndByP decl (stok Semicolon)
+  pure $ go ds semicolons
+ where
+  go :: [Decl] -> [WithWs PosToken] -> [Decl]
+  go [] [] = []
+  go [] (_:_) = error "decls: no decl but trailing whitespace. This is a parser bug."
+  go [d] [] = [attachHiddenSemicolonToken d]
+  go (d:rs) (w:ws) = attachTrailingWhiteSpace w d : go rs ws
+  go (_:_) [] = error "decls: Ran out of semicolons. This is a parser bug."
 
 replCommand :: Text -> Text -> Parser ()
 replCommand tl ts =
-  try (stok Colon *> (sidentifier tl <|> sidentifier ts))
+  try (stok Colon *> (void $ sidentifier tl <|> sidentifier ts))
 
 instruction :: Parser Instruction
 instruction =
@@ -283,3 +467,74 @@ parseDecls =
 parseInstruction :: Text -> Either String Instruction
 parseInstruction =
   execParser instruction "interactive"
+
+-- ----------------------------------------------------------------------------
+-- AST manipulation utilities
+-- ----------------------------------------------------------------------------
+
+attachTrailingWhiteSpace :: WithWs PosToken -> Decl -> Decl
+attachTrailingWhiteSpace tokWithWs = \case
+  NonRec meta t n e -> NonRec (attach meta) t n e
+  Rec meta t n e -> Rec (attach meta) t n e
+  Eval meta e -> Eval (attach meta) e
+  where
+    attach (Meta toks) = (Meta $ toks <> [mkClusterMeta tokWithWs])
+
+attachHiddenSemicolonToken :: Decl -> Decl
+attachHiddenSemicolonToken = \case
+  NonRec meta t n e -> NonRec (attach meta) t n e
+  Rec meta t n e -> Rec (attach meta) t n e
+  Eval meta e -> Eval (attach meta) e
+  where
+    attach (Meta toks) = (Meta $ toks <> [mkHiddenClusterMeta Semicolon])
+
+-- ----------------------------------------------------------------------------
+-- Parser Utilities
+-- ----------------------------------------------------------------------------
+
+betweenP :: Parser (WithWs open) -> Parser (WithWs close) -> Parser b -> Parser (WithWs open, b, WithWs close)
+betweenP open close p = do
+  openWs <- open
+  pWs <- p
+  closeWs <- close
+  pure (openWs, pWs, closeWs)
+
+-- | @'sepByP' p sep@ parses /zero/ or more occurrences of @p@, separated by
+-- @sep@. Returns a list of values returned by @p@.
+--
+-- > commaSep p = p `sepBy` comma
+sepByP :: Parser a -> Parser sep -> Parser ([a], [sep])
+sepByP p sep = sepBy1P p sep <|> pure ([], [])
+{-# INLINE sepByP #-}
+
+
+-- | @'sepBy1P' p sep@ parses /one/ or more occurrences of @p@, separated by
+-- @sep@. Returns a list of values returned by @p@.
+sepBy1P :: Parser a -> Parser sep -> Parser ([a], [sep])
+sepBy1P p sep = do
+  a <- p
+  sepsAndA <- many ((,) <$> sep <*> p)
+  let (seps, as) = unzip sepsAndA
+  pure (a : as, seps)
+
+-- | @'sepEndByP' p sep@ parses /zero/ or more occurrences of @p@, separated
+-- and optionally ended by @sep@. Returns a list of values returned by @p@.
+sepEndByP :: Parser a -> Parser sep -> Parser ([a], [sep])
+sepEndByP p sep = sepEndBy1P p sep <|> pure ([], [])
+{-# INLINE sepEndByP #-}
+
+-- | @'sepEndBy1P' p sep@ parses /one/ or more occurrences of @p@, separated
+-- and optionally ended by @sep@. Returns a list of values returned by @p@.
+sepEndBy1P :: Parser a -> Parser sep -> Parser ([a], [sep])
+sepEndBy1P p sep = do
+  a <- p
+  (as, seps) <-
+    do
+      s <- sep
+      (as, seps) <- sepEndByP p sep
+      pure (as, s : seps)
+      <|> pure ([], [])
+  pure (a : as, seps)
+
+{-# INLINEABLE sepEndBy1P #-}
+

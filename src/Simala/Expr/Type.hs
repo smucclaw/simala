@@ -2,8 +2,15 @@ module Simala.Expr.Type where
 
 import Base
 import qualified Base.Map as Map
+import Simala.Expr.Metadata
 
 type Name = Text
+
+data Variable = Variable
+  { meta :: Meta
+  , name :: Name
+  }
+  deriving stock Show
 
 -- | Declarations are used in the repl, in declaration files,
 -- and in let expressions.
@@ -12,9 +19,9 @@ type Name = Text
 -- now and have to be simulated via records.
 --
 data Decl =
-    NonRec Transparency Name Expr
-  | Rec    Transparency Name Expr
-  | Eval   Expr
+    NonRec Meta Transparency Variable Expr
+  | Rec    Meta Transparency Variable Expr
+  | Eval   Meta Expr
   deriving stock Show
 
 -- | Repl instructions.
@@ -38,19 +45,32 @@ data ReplCommand =
   deriving stock Show
 
 data Expr =
-    Builtin    Builtin [Expr]              -- built-ins; they currently decide their own eval strategy, so can be used for control flow
-  | Var        Name
-  | Atom       Name                        -- for simulating enumeration types
-  | Lit        Lit
-  | App        Expr [Expr]                 -- function application (not a built-in because it's so fundamental)
-  | Record     (Row Expr)                  -- record construction
-  | Project    Expr Name                   -- record projection
-  | Fun        Transparency [Name] Expr    -- anonymous function
-  | Let        Decl Expr                   -- possibly recursive let-binding
-  | Undefined                              -- unclear
+    Builtin    Meta Builtin [Expr]              -- built-ins; they currently decide their own eval strategy, so can be used for control flow
+  | Var        Meta Variable
+  | Atom       Meta Variable                    -- for simulating enumeration types
+  | Lit        Meta Lit
+  | App        Meta Expr [Expr]                 -- function application (not a built-in because it's so fundamental)
+  | Record     Meta (Rows Expr)                  -- record construction
+  | Project    Meta Expr Variable                   -- record projection
+  | Fun        Meta Transparency [Variable] Expr    -- anonymous function
+  | Let        Meta Decl Expr                   -- possibly recursive let-binding
+  | Undefined  Meta                             -- unclear
+  | Parens     Meta Expr
   deriving stock Show
 
-type Row a = [(Name, a)]
+data Rows a = Rows Meta [Row a]
+  -- Meta contains `,`
+  deriving stock Show
+  deriving (Functor, Foldable, Traversable)
+
+data Row a = Row
+  { meta :: Meta
+  , var :: Variable
+  , payload :: a
+  }
+  -- Meta contains `=`
+  deriving stock Show
+  deriving (Functor, Foldable, Traversable)
 
 data Transparency =
     Opaque
@@ -106,7 +126,7 @@ data Val =
   | VString Text       -- ^ string value
   | VFrac Double       -- ^ fractional value
   | VList [Val]        -- ^ fully evaluated list
-  | VRecord (Row Val)  -- ^ fully evaluated record
+  | VRecord (Rows Val)  -- ^ fully evaluated record
   | VClosure Closure   -- ^ closure / suspended function
   | VAtom Name         -- ^ an atom is just a name that is not interpreted further
   | VBlackhole         -- ^ special value used in the evaluation of recursive lets
@@ -199,17 +219,20 @@ lookupInEnv :: Name -> Env -> Maybe Val
 lookupInEnv = Map.lookup
 
 -- | Helper function to create an if-then-else construct.
-mkIfThenElse :: Expr -> Expr -> Expr -> Expr
-mkIfThenElse c t e = Builtin IfThenElse [c, t, e]
+mkIfThenElse :: Meta -> Expr -> Expr -> Expr -> Expr
+mkIfThenElse m c t e = Builtin m IfThenElse [c, t, e]
 
 -- | Helper function to create a nested let expression.
-mkLet :: [Decl] -> Expr -> Expr
-mkLet ds e = foldr Let e ds
+mkLet :: Meta -> [Decl] -> Expr -> Expr
+mkLet _m [] e =
+  e
+mkLet m (d:ds) e =
+  Let m d (foldr (Let emptyMeta) e ds)
 
 -- | Helper function to create a cons.
-mkCons :: Expr -> Expr -> Expr
-mkCons x xs = Builtin Cons [x, xs]
+mkCons :: Meta -> Expr -> Expr -> Expr
+mkCons m x xs = Builtin m Cons [x, xs]
 
 -- | Helper function to create a list.
-mkList :: [Expr] -> Expr
-mkList xs = Builtin List xs
+mkList :: Meta -> [Expr] -> Expr
+mkList m xs = Builtin m List xs

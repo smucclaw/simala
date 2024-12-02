@@ -51,29 +51,29 @@ instance Render EvalError where
 
 instance Render Decl where
   renderAtPrio :: Int -> Decl -> Doc ann
-  renderAtPrio _ (Rec t name expr)    =
+  renderAtPrio _ (Rec _ t name expr)    =
     align (nest 2 (sep ["rec" <<+>> renderTransparency t <<+>> render name <+> "=", render expr]))
-  renderAtPrio _ (NonRec t name expr) =
+  renderAtPrio _ (NonRec _ t name expr) =
     align (nest 2 (sep [renderTransparency t <<+>> render name <+> "=", render expr]))
-  renderAtPrio _ (Eval expr)          =
+  renderAtPrio _ (Eval _ expr)          =
     "#eval" <+> render expr
 
 instance Render Expr where
   renderAtPrio :: Int -> Expr -> Doc ann
-  renderAtPrio p (Builtin b es) = renderBuiltin p b es
-  renderAtPrio _ (Var x)        = render x
-  renderAtPrio _ (Atom x)       = "'" <> render x
-  renderAtPrio _ (Lit l)        = render l
-  renderAtPrio _ (Record r)     = renderRow "=" r
-  renderAtPrio p (Project e n)  = parensIf (p > 9) (renderAtPrio 9 e <> "." <> render n)
-  renderAtPrio p (Fun t args e) =
+  renderAtPrio p (Builtin _ b es) = renderBuiltin p b es
+  renderAtPrio _ (Var _ x)        = render x
+  renderAtPrio _ (Atom _ x)       = "'" <> render x
+  renderAtPrio _ (Lit _ l)        = render l
+  renderAtPrio p (Record _ r)     = renderAtPrio p r
+  renderAtPrio p (Project _ e n)  = parensIf (p > 9) (renderAtPrio 9 e <> "." <> render n)
+  renderAtPrio p (Fun _ t args e) =
     parensIf (p > 0)
       (align (nest 2 (sep
         [ "fun" <<+>> renderTransparency t <<+>> renderArgs args <+> "=>"
         , render e
         ]
       )))
-  renderAtPrio p e@(Let _ _)    =
+  renderAtPrio p e@(Let _ _ _)    =
     let
       (ds, body) = scanLet e
     in
@@ -83,13 +83,24 @@ instance Render Expr where
           , "in" <+> render body
           ]
         ))
-  renderAtPrio p (App e es)     = parensIf (p > 9) (renderAtPrio 9 e <> renderArgs es)
-  renderAtPrio _ Undefined      = "undefined"
+  renderAtPrio p (App _ e es)     = parensIf (p > 9) (renderAtPrio 9 e <> renderArgs es)
+  renderAtPrio _ (Undefined _)    = "undefined"
+  renderAtPrio p (Parens _ e)     = parens (renderAtPrio p e)
+
+instance Render a => Render (Rows a) where
+  renderAtPrio _ (Rows _ r) =
+    "{" <> align (cat (punctuate "," (map render r))) <> "}"
+
+instance Render a => Render (Row a) where
+  renderAtPrio _ (Row _ n e) = render n <+> "=" <+> render e
+
+instance Render Variable where
+  renderAtPrio _ (Variable _ n) = render n
 
 -- | Detect nested lets in order to render them compactly.
 --
 scanLet :: Expr -> ([Decl], Expr)
-scanLet (Let d e) =
+scanLet (Let _ d e) =
   let
     (ds, body) = scanLet e
   in
@@ -231,7 +242,7 @@ instance Render Val where
   render (VString s)                       = pretty (show s)
   render (VFrac f)                         = pretty (show f)
   render (VList vs)                        = renderList vs
-  render (VRecord r)                       = renderRow "=" r
+  render (VRecord r)                       = render r
   render (VClosure (MkClosure t args _ _)) = "<fun" <> renderTransparency t <> "/" <> pretty (show (length args)) <> ">"
   render (VAtom x)                         = "'" <> render x
   render VBlackhole                        = "<blackhole>"
@@ -247,13 +258,3 @@ renderArgs xs = "(" <> align (cat (punctuate "," (map render xs))) <> ")"
 -- | Helper function to render a literal list.
 renderList :: Render a => [a] -> Doc ann
 renderList xs = "[" <> align (cat (punctuate "," (map render xs))) <> "]"
-
--- | Helper function to render a row. Takes as argument the
--- string that separates names from payloads.
---
-renderRow :: forall a ann. Render a => Doc ann -> Row a -> Doc ann
-renderRow sepd xs =
-  "{" <> align (cat (punctuate "," (map item xs))) <> "}"
-  where
-    item :: (Name, a) -> Doc ann
-    item (x, a) = render x <+> sepd <+> render a

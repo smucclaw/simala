@@ -71,10 +71,10 @@ simplifyEvalTrace' (Trace mn e subs v) =
     -- TODO: This needs more documentation, as I currently don't understand
     -- this anymore.
     case t' of
-      Trace Nothing (Lit _)          [] _ -> Nothing
-      Trace Nothing (Record _)       [] _ -> Nothing
-      Trace Nothing (Atom _)         [] _ -> Nothing
-      Trace Nothing (Builtin List _) [] _ -> Nothing
+      Trace Nothing (Lit _ _)          [] _ -> Nothing
+      Trace Nothing (Record _ _)       [] _ -> Nothing
+      Trace Nothing (Atom _ _)         [] _ -> Nothing
+      Trace Nothing (Builtin _ List _) [] _ -> Nothing
       _                                   -> Just t'
 
 simplifyEvalTrace :: EvalTrace -> EvalTrace
@@ -153,7 +153,7 @@ expectList :: Val -> Eval [Val]
 expectList (VList vs) = pure vs
 expectList v          = typeError [TList] (valTy v)
 
-expectRecord :: Val -> Eval (Row Val)
+expectRecord :: Val -> Eval (Rows Val)
 expectRecord (VRecord r) = pure r
 expectRecord v           = typeError [TRecord] (valTy v)
 

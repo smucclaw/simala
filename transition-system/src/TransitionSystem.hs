@@ -22,6 +22,7 @@ import Simala.Eval.Monad
 import Simala.Expr.Evaluator
 import Simala.Expr.Render
 import Simala.Expr.Type
+import Simala.Expr.Metadata
 
 newtype Loc = Loc {nameOfLoc :: Text}
   deriving stock (Eq, Ord, Show, Read)
@@ -32,22 +33,25 @@ type ChannelName = Name
 -- some abbreviations
 
 il :: Int -> Expr
-il = Lit . IntLit
+il = Lit emptyMeta . IntLit
 
 bl :: Bool -> Expr
-bl = Lit . BoolLit
+bl = Lit emptyMeta . BoolLit
+
+mkVarE :: Text -> Expr
+mkVarE = Var emptyMeta . Variable emptyMeta
 
 minus :: Expr -> Expr -> Expr
-minus e1 e2 = Builtin Minus [e1, e2]
+minus e1 e2 = Builtin emptyMeta Minus [e1, e2]
 
 plus :: Expr -> Expr -> Expr
-plus e1 e2 = Builtin Sum [e1, e2]
+plus e1 e2 = Builtin emptyMeta Sum [e1, e2]
 
 gt :: Expr -> Expr -> Expr
-gt e1 e2 = Builtin Gt [e1, e2]
+gt e1 e2 = Builtin emptyMeta Gt [e1, e2]
 
 le :: Expr -> Expr -> Expr
-le e1 e2 = Builtin Le [e1, e2]
+le e1 e2 = Builtin emptyMeta Le [e1, e2]
 
 data Cmd = VAssign Var Expr
   deriving stock Show
@@ -165,7 +169,7 @@ noSyncProdTrans (ProdTrans t) =
 prodOfTrans :: (Sync, ProdTrans l) -> Transition [l]
 prodOfTrans (sync, ProdTrans t) = Transition {
     sourceOfTransition = map (sourceOfTransition . hideVisibility) t
-  , guardOfTransition = Builtin And (map (guardOfTransition . hideVisibility) t)
+  , guardOfTransition = Builtin emptyMeta And (map (guardOfTransition . hideVisibility) t)
   , syncOfTransition = sync
   , actionOfTransition = concatMap (actionOfTransition . hideVisibility) t
   , targetOfTransition = map (targetOfTransition . hideVisibility) t
@@ -188,8 +192,8 @@ maximallySyncedOverChannel c prtrs =
   in filter (\(ProdTrans tr) -> count transExternal tr == m) allSynced
 
 
--- Assuming there are n automata, for automata [a1 .. an], 
--- allTrans is the list composed of lists [t1 .. tn] 
+-- Assuming there are n automata, for automata [a1 .. an],
+-- allTrans is the list composed of lists [t1 .. tn]
 -- with ti stemming from ai; ploc is a product location [l1 .. ln]
 getApplicableTransOfProdLoc :: Eq l => [ChannelName] -> [ProdTrans l] -> ProdLoc l -> [Transition [l]]
 getApplicableTransOfProdLoc chs allTrs ploc =
@@ -204,7 +208,7 @@ filterApplicableTrans chs allTrs = concatMap (getApplicableTransOfProdLoc chs al
 allTrans :: [Aut l] -> [[Visibility (Transition l)]]
 allTrans = map (\a -> noActTrans (locsOfAut a) ++ map External (transitionsOfAut a))
 
--- TODO: also test for empty system (containing no automata) 
+-- TODO: also test for empty system (containing no automata)
 -- TODO: check for multiple assignments in action of transition after product
 prodAut :: Eq l => Sys l -> Aut [l]
 prodAut sys =
@@ -320,7 +324,7 @@ bfs next sol (s:ss) =
   then s: bfs next sol (ss ++ next s)
   else bfs next sol (ss ++ next s)
 
--- Run an automaton until a solution condition 'sol' on the traces is satisfied. 
+-- Run an automaton until a solution condition 'sol' on the traces is satisfied.
 -- Controlling the length of the trace is an indirect way of bounding the depth of the search.
 runAut :: Eq l => Aut l -> (Trace l -> Bool) -> [Trace l]
 runAut a sol = bfs (stepTrace a) sol [initialTrace a]
@@ -408,9 +412,9 @@ data CTLForm b
   | CTLQuant PQuantif SQuantif (CTLForm b)
   deriving (Eq, Ord, Show, Read)
 
--- Simplified CTL formulas as used in Uppaal, 
+-- Simplified CTL formulas as used in Uppaal,
 -- consisting of a path/state quantifier prefix and a quantifier-free body
--- For more complex CTL formulas like (E<> P) && (E<> Q), 
+-- For more complex CTL formulas like (E<> P) && (E<> Q),
 -- it is not even clear what a trace might be
 data UpCTLExpr b
   = UpCTLBasic b
@@ -515,7 +519,7 @@ evalUpCTLFormHere s (UpCTLQuant _pq G f) =
   if evalUpCTLExprHere s f then Inconclusive else Invalid
 evalUpCTLFormHere s (UpCTLQuant _pq F f) =
   if evalUpCTLExprHere s f then Valid else Inconclusive
-evalUpCTLFormHere _s (UpCTLQuant _pq N _f) = Inconclusive  -- the N constructor is not handled 
+evalUpCTLFormHere _s (UpCTLQuant _pq N _f) = Inconclusive  -- the N constructor is not handled
 
 
 
@@ -630,8 +634,8 @@ normalizeExpr Product [] = il 1
 normalizeExpr And [] = bl True
 normalizeExpr Or [] = bl False
 normalizeExpr _ [e] = e
-normalizeExpr b (e:es) = Builtin b [e, normalizeExpr b es]
-normalizeExpr b es = Builtin b es  -- error case (malformed expression)
+normalizeExpr b (e:es) = Builtin emptyMeta b [e, normalizeExpr b es]
+normalizeExpr b es = Builtin emptyMeta b es  -- error case (malformed expression)
 
 nestingDepth :: Int
 nestingDepth = 4
@@ -831,9 +835,9 @@ purchaserAut = Aut {
     , Transition "pLoopHead" (bl True) (SendSync "requestPermission") [] "pPermissionRequested"
     , Transition "pPermissionRequested" (bl True) (RecvSync "refusePermission") [] "pPermissionRefused"
     , Transition "pPermissionRequested" (bl True) (RecvSync "grantPermission") []  "pPermissionGranted"
-    , Transition "pPermissionGranted" (bl True) (SendSync "payment") [VAssign "debt" (Var "debt" `minus` Var "installment") ] "pCheckDebt"
-    , Transition "pCheckDebt" (Var "debt" `le` il 0) NoSync [VAssign "paymentComplete" (bl True), VAssign "controlled" (bl True)] "pPaymentDone"
-    , Transition "pCheckDebt" (Var "debt" `gt` il 0) NoSync [VAssign "debt" (Var "debt" `plus` Var "interest")] "pLoopHead"
+    , Transition "pPermissionGranted" (bl True) (SendSync "payment") [VAssign "debt" (mkVarE "debt" `minus` mkVarE "installment") ] "pCheckDebt"
+    , Transition "pCheckDebt" (mkVarE "debt" `le` il 0) NoSync [VAssign "paymentComplete" (bl True), VAssign "controlled" (bl True)] "pPaymentDone"
+    , Transition "pCheckDebt" (mkVarE "debt" `gt` il 0) NoSync [VAssign "debt" (mkVarE "debt" `plus` mkVarE "interest")] "pLoopHead"
     , Transition "pPaymentDone" (bl True) (SendSync "endAcquisition") [] "pFinal"
   ]
   , initialLocOfAut = "pInit"

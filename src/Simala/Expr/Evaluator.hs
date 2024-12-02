@@ -8,6 +8,7 @@ import Simala.Eval.Type
 import Simala.Expr.Render
 import Simala.Expr.Type
 import Util.RevList
+import Simala.Expr.Metadata
 
 -- | Evaluate an expression. Produces a trace if
 -- the current transparency level warrants it.
@@ -37,43 +38,44 @@ evalWithTransparency t' n e = do
 -- This is intended to be called only by 'eval'.
 --
 eval' :: Expr -> Eval Val
-eval' (Builtin b exprs)   = evalBuiltin b exprs
-eval' (Var x)             = look x
-eval' (Atom x)            = pure (VAtom x)
-eval' Undefined           = crash
-eval' (Lit l)             = evalLit l
-eval' (Record r)          = do
-  vs <- traverse (\ (x, e) -> (x,) <$> eval e) r
+eval' (Builtin _ b exprs)   = evalBuiltin b exprs
+eval' (Var _ x)             = look x.name
+eval' (Atom _ x)            = pure (VAtom x.name)
+eval' (Undefined _)         = crash
+eval' (Lit _ l)             = evalLit l
+eval' (Record _ r)          = do
+  vs <- traverse eval r
   pure (VRecord vs)
-eval' (Project e x)       = do
+eval' (Project _ e x)       = do
   v <- eval e
   r <- expectRecord v
-  case lookup x r of
-    Nothing -> recordProjectionError x
+  case lookupByName x.name r of
+    Nothing -> recordProjectionError x.name
     Just vx -> pure vx
-eval' (App f args)        = do
+eval' (App _ f args)        = do
   v <- eval f
   c <- expectFunction v
   evalClosure c args
-eval' (Fun t ns body)     = do
+eval' (Fun _ t ns body)     = do
   env <- getEnv
-  pure (VClosure (MkClosure t ns body env))
-eval' (Let d e)     = do
+  pure (VClosure (MkClosure t (fmap (.name) ns) body env))
+eval' (Let _ d e)     = do
   env' <- evalDecl d
   env <- getEnv
   withEnv (extendEnv env env') (eval e)
+eval' (Parens _ e)     = eval' e
 
 evalDecl :: Decl -> Eval Env
-evalDecl (NonRec t n e) = do
-  v <- evalWithTransparency t n e
+evalDecl (NonRec _ t var e) = do
+  v <- evalWithTransparency t var.name e
   let v' = attachTransparency t v
-  pure (singletonEnv n v')
-evalDecl (Rec t n e) = do
-  let env' = singletonEnv n VBlackhole
+  pure (singletonEnv var.name v')
+evalDecl (Rec _ t var e) = do
+  let env' = singletonEnv var.name VBlackhole
   env <- getEnv
-  v <- withEnv (extendEnv env env') (evalWithTransparency t n e)
+  v <- withEnv (extendEnv env env') (evalWithTransparency t var.name e)
   let
-    env'' = singletonEnv n v'
+    env'' = singletonEnv var.name v'
     v' =
       case v of
         -- if we get a closure, we actually replace the blackhole in the closure environment
@@ -81,7 +83,7 @@ evalDecl (Rec t n e) = do
         _ -> v -- TODO: we could be doing something better for lists and in particular records, but
                -- currently we just fall back to non-recursive let
   pure env''
-evalDecl (Eval e) = do
+evalDecl (Eval _ e) = do
   env <- getEnv
   case runEval (withEnv env (eval e)) of
     (r, t) -> do
@@ -363,9 +365,7 @@ evalBuiltin Merge es = do
   (e1, e2) <- expectArity2 es
   r1 <- (eval >=> expectRecord) e1
   r2 <- (eval >=> expectRecord) e2
-  -- Right biased merging of records.
-  -- We could be smarter in the case of nested records.
-  let r = Map.toList $ Map.unionWith (\_ b -> b) (Map.fromList r1) (Map.fromList r2)
+  let r = mergeRows r1 r2
   pure $ VRecord r
 evalBuiltin Floor es = do
   f <- expect1Frac es
@@ -461,3 +461,27 @@ renderIntermediateResult r =
   case r of
     Left err -> print err
     Right x  -> Text.putStrLn (renderAsText x)
+
+lookupByName :: Name -> Rows a -> Maybe a
+lookupByName n (Rows _ rows) =
+  findFirstJust
+    (\row -> do
+        guard (row.var.name == n)
+        pure $ row.payload
+    )
+    rows
+  where
+    findFirstJust f = asum . fmap f
+
+-- | Merge two records of rows together.
+--
+-- Right biased merging of records.
+-- We could be smarter in the case of nested records.
+mergeRows :: Rows a -> Rows a -> Rows a
+mergeRows (Rows _ x) (Rows _ y) =
+  Rows emptyMeta $ Map.elems $ Map.unionWith (\_ b -> b) (recordMap x) (recordMap y)
+  where
+    recordMap = Map.fromList . (fmap (\r -> (r.var.name, r)))
+
+mkRow :: Name -> a -> Row a
+mkRow n a = Row emptyMeta (Variable emptyMeta n) a
