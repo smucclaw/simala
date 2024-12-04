@@ -42,6 +42,7 @@ library
     Simala.Eval.Monad
     Simala.Eval.Type
     Simala.Expr.Evaluator
+    Simala.Expr.ExactPrint
     Simala.Expr.Lexer
     Simala.Expr.Metadata
     Simala.Expr.Parser

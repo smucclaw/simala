@@ -1,0 +1,44 @@
+#eval let
+  
+  get_opinion =
+
+    fun (b, inv) =>
+
+    if
+            b.stage     == 'seed
+         && b.sector    == 'information_technology
+         && b.stage_com == 'pre_revenue
+          
+      ||    b.stage     == 'series_a
+         && b.sector    == 'information_technology
+         && b.stage_com == 'pre_profit
+          
+      || inv.has_ESG
+
+    then 'interesting
+    else 'reject
+
+in
+
+  get_opinion
+    ( -- business:
+      { stage     = 'seed,
+        sector    = 'information_technology,
+        stage_com = 'pre_profit },
+      -- investor:
+      { has_ESG = true }
+    )
+
+{-
+GIVEN   b   IS A Business						
+        inv IS A Investor						
+GIVETH  opinion IS A Opinion						
+DECIDE  opinion IS interesting	IF		stage     IS Seed	
+                                  AND   sector    IS Information Technology	
+                                  AND   stage_com IS Pre-Revenue	
+				                OR      stage     IS Series A	
+					              AND   sector    IS Information Technology	
+                                  AND   stage_com IS Pre-Profit	
+				                OR has_ESG				
+	    opinion	IS reject OTHERWISE
+-}

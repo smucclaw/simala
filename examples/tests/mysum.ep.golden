@@ -1,0 +1,2 @@
+opaque mysum = fun (xs) => foldl(fun (acc, x) => acc + x, 0, xs) ;
+#eval mysum([1,2,3,4])

@@ -1,0 +1,9 @@
+#eval
+let `this is a variable` = 3 in
+let `this is another variable` = 22 in
+let `atoms can be quoted too` = '`see here` in
+let `a record` = { `field 1` = `atoms can be quoted too` } in
+
+if `a record` . `field 1` == '`see there`
+  then `this is a variable` + `this is another variable`
+  else `this is a variable` * `this is another variable`

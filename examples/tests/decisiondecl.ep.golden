@@ -1,0 +1,25 @@
+get_opinion =
+
+  fun (b, inv) =>
+    let opaque `Seed / IT / Pre-revenue condition` =
+          b.stage     == 'seed
+       && b.sector    == 'information_technology
+       && b.stage_com == 'pre_revenue
+    in
+    let opaque `Series A / IT / Pre-profit condition` =
+          b.stage     == 'series_a
+       && b.sector    == 'information_technology
+       && b.stage_com == 'pre_profit
+    in
+    let opaque `has_ESG condition` =
+          inv.has_ESG
+    in
+    let opaque `overall choice` =
+         `Seed / IT / Pre-revenue condition`
+      || `Series A / IT / Pre-profit condition`
+      || `has_ESG condition`
+    in
+    let opaque result =
+      if `overall choice` then 'interesting else 'reject
+    in
+      result

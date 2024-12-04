@@ -1,0 +1,10 @@
+rec evenodd = fun (unused) =>
+  { even = fun (x) => x == 0 || evenodd(unused).odd(x - 1)
+  , odd  = fun (x) => not (x == 0) && evenodd(unused).even(x - 1)
+  };
+#eval evenodd('irrelevant).even(0);
+#eval evenodd('irrelevant).even(20);
+#eval evenodd('irrelevant).even(21);
+#eval evenodd('irrelevant).odd(0);
+#eval evenodd('irrelevant).odd(20);
+#eval evenodd('irrelevant).odd(21);

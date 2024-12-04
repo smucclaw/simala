@@ -1,0 +1,6 @@
+foobar = "foo" ++ "bar";
+number = 3 + 5;
+
+#eval foobar;
+#eval explode(foobar);
+#eval number

@@ -1,0 +1,10 @@
+fractional = 0.5 * 0.5;
+negative = -0.3;
+squared = negative * negative;
+
+#eval fractional;
+#eval floor(fractional);
+#eval ceiling(fractional);
+#eval fractional * fromInt(2);
+#eval negative;
+#eval squared; -- yields output as 9.0e-2 which we may not want

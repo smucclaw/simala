@@ -1,0 +1,8 @@
+rec fib = fun(n) => if n <= 2 then 1 else fib(n - 1) + fib (n - 2) ;
+
+opaque map =
+    fun (f, xs) =>
+    foldr (fun (x, r) => f(x) : r, [], xs) ;
+
+#eval fib(5);
+#eval map (fun(n) => fib(n), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
