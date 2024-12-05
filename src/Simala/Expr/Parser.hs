@@ -20,14 +20,19 @@ data WithWs a = WithWs [PosToken] a
   deriving stock Show
   deriving (Functor)
 
-wsMeta :: [WithWs PosToken] -> Meta
-wsMeta = mkMeta . fmap mkClusterMeta
+betweenHoles :: [a] -> [MetaElement] -> [MetaElement]
+betweenHoles list = go
+  where
+  go [] = case null list of
+    True -> []
+    _ -> [MetaHole]
+  go (x:xs) = MetaHole : x : go xs
 
-mkClusterMeta :: WithWs PosToken -> ClusterMeta
-mkClusterMeta (WithWs after posToken) =
+fromWs :: WithWs PosToken -> MetaElement
+fromWs (WithWs after posToken) = MetaCsn
   ClusterMeta
-    { thisToken = mkTokenCluster [posToken]
-    , afterThisToken = mkTokenCluster after
+    { payload = mkConcreteSyntaxNode [posToken]
+    , trailing = mkConcreteSyntaxNode after
     , label = tokenTypeLabel posToken.payload
     }
 
@@ -102,7 +107,7 @@ name =
 variable :: Parser Variable
 variable = do
   WithWs ws (origToken, n) <- (quotedName <|> simpleName) <?> "identifier"
-  pure $ Variable (wsMeta [WithWs ws origToken]) n
+  pure $ Variable (mkMeta [fromWs $ WithWs ws origToken]) n
 
 fracLit :: Parser (WithWs (PosToken, Double))
 fracLit =
@@ -133,8 +138,8 @@ expr =
 operatorTable :: [[Operator Parser Expr]]
 operatorTable =
   [ [ postfix -- we allow mixed chains of function applications and record projections
-        (   (\(dotWs, var) e -> Project (wsMeta [dotWs]) e var)  <$> ((,) <$> stok Dot <*> variable)
-        <|> (\(open, (args, seps), close) e -> mkApp (wsMeta $ [open] <> seps <> [close]) e args) <$> argsOf expr
+        (   recordProject
+        <|> funAppOp
         )
     ]
     -- 7
@@ -170,6 +175,26 @@ operatorTable =
   --   ]
   ]
 
+recordProject :: Parser (Expr -> Expr)
+recordProject = do
+  dotWs <- stok Dot
+  var <- variable
+  pure $ \e ->
+    Project
+      (mkMeta [mkHoleWithType e, fromWs dotWs, mkHoleWithType var])
+      e
+      var
+
+funAppOp :: Parser (Expr -> Expr)
+funAppOp = do
+  (open, (args, seps), close) <- argsOf expr
+  pure $ \e ->
+    mkApp
+      -- Usually, `e` should be 
+      (mkMeta $ [fromWs open] <> betweenHoles args (fmap fromWs seps) <> [fromWs close])
+      e
+      args
+
 prefix :: Parser (Expr -> Expr) -> Operator Parser Expr
 prefix p = Prefix (foldr (.) id <$> some p)
 
@@ -180,13 +205,13 @@ binaryl :: TokenType -> (Meta -> Expr -> Expr -> Expr) -> Operator Parser Expr
 binaryl op f =
   InfixL $ do
     opWs <- stok op
-    pure $ f (wsMeta [opWs])
+    pure $ f (mkMeta [mkHole, fromWs opWs, mkHole])
 
 binaryr :: TokenType -> (Meta -> Expr -> Expr -> Expr) -> Operator Parser Expr
 binaryr op f =
   InfixR $ do
     opWs <- stok op
-    pure $ f (wsMeta [opWs])
+    pure $ f (mkMeta [mkHole, fromWs opWs, mkHole])
 
 builtin2 :: Builtin -> Meta -> Expr -> Expr -> Expr
 builtin2 f m e1 e2 = Builtin m f [e1, e2]
@@ -211,7 +236,7 @@ letP = do
   inWs <- stok KIn
   e <- expr
   pure $ mkLet
-    (wsMeta [l, inWs])
+    (mkMeta [fromWs l, mkHoleWithType ds, fromWs inWs, mkHoleWithType e])
     ds
     e
 
@@ -224,13 +249,14 @@ funP = do
   e <- expr
   pure $ Fun
     (mkMeta $ mconcat
-      [ [ mkClusterMeta funTok
+      [ [ fromWs funTok
         , fst transTok
-        , mkClusterMeta open
+        , fromWs open
         ]
-      , fmap mkClusterMeta commas
-      , [ mkClusterMeta close
-        , mkClusterMeta impliesTok
+      , betweenHoles vars (fmap fromWs commas)
+      , [ fromWs close
+        , fromWs impliesTok
+        , mkHoleWithType e
         ]
       ]
     )
@@ -247,7 +273,15 @@ ifThenElseP = do
   elseTok <- stok KElse
   elseExpr <- expr
   pure $ mkIfThenElse
-    (wsMeta [ifTok, thenTok, elseTok])
+    (mkMeta
+      [ fromWs ifTok
+      , mkHoleWithType condExpr
+      , fromWs thenTok
+      , mkHoleWithType thenTok
+      , fromWs elseTok
+      , mkHoleWithType elseExpr
+      ]
+    )
     condExpr
     thenExpr
     elseExpr
@@ -256,44 +290,44 @@ listP :: Parser Expr
 listP = do
   (open, (items, commas), close) <- betweenP (stok SOpen) (stok SClose) (sepByP expr (stok Comma))
   pure $ mkList
-    (wsMeta $ [open] <> commas <> [close])
+    (mkMeta $ [fromWs open] <> betweenHoles items (fmap fromWs commas) <> [fromWs close])
     items
 
 recordP :: Parser Expr
 recordP = do
   (open, rowExprs, close) <- betweenP (stok COpen) (stok CClose) (rows (stok Equals) expr)
   pure $ Record
-    (wsMeta $ [open] <> [close])
+    (mkMeta [fromWs open, mkHoleWithType rowExprs, fromWs close])
     rowExprs
 
 litP :: Parser Expr
 litP = do
   l <- lit
   pure $ Lit
-    (wsMeta [fmap fst l])
+    (mkMeta [fromWs $ fmap fst l])
     (snd $ unWs l)
 
 varP :: Parser Expr
 varP = do
   n <- variable
-  pure $ Var emptyMeta n
+  pure $ Var (mkMeta [mkHoleWithType n]) n
 
 atomP :: Parser Expr
 atomP = do
   quoteTok <- stok Quote
   n <- variable
-  pure $ Atom (wsMeta [quoteTok]) n
+  pure $ Atom (mkMeta [fromWs quoteTok, mkHoleWithType n]) n
 
 undefinedP :: Parser Expr
 undefinedP = do
   undefinedTok <- stok KUndefined
-  pure $ Undefined (wsMeta [undefinedTok])
+  pure $ Undefined (mkMeta [fromWs undefinedTok])
 
 parensP :: Parser Expr
 parensP = do
   (open, e, close) <- betweenP (stok POpen) (stok PClose) expr
   pure $ Parens
-    (wsMeta [open, close])
+    (mkMeta [fromWs open, mkHoleWithType e, fromWs close])
     e
 
 -- | Parse a row of bindings. Parameterised over the
@@ -304,8 +338,9 @@ rows :: Parser (WithWs PosToken) -> Parser a -> Parser (Rows a)
 rows sep payload = do
   (rowsA, commas) <- sepByP (row sep payload) (stok Comma)
   pure $ Rows
-    (wsMeta commas)
+    (mkMeta $ betweenHoles rowsA (fmap fromWs commas))
     rowsA
+
 
 row :: Parser (WithWs PosToken) -> Parser a -> Parser (Row a)
 row sep payload = do
@@ -313,18 +348,18 @@ row sep payload = do
   eqTok <- sep
   a <- payload
   pure $ Row
-    (wsMeta [eqTok])
+    (mkMeta [mkHoleWithType var, fromWs eqTok, mkHoleWithType a])
     var
     a
 
 -- | Parse optional transparency. Missing transparency
--- is assumed to be 'Transparnet'.
+-- is assumed to be 'Transparent'.
 --
-transparency :: Parser (ClusterMeta, Transparency)
+transparency :: Parser (MetaElement, Transparency)
 transparency =
-  option (mkHiddenClusterMeta KTransparent, Transparent)
-    (   ((,Transparent) . mkClusterMeta) <$> stok KTransparent
-    <|> ((,Opaque) . mkClusterMeta)      <$> stok KOpaque
+  option (mkCsn $ mkHiddenClusterMeta KTransparent, Transparent)
+    (   ((,Transparent) . fromWs) <$> stok KTransparent
+    <|> ((,Opaque) . fromWs)      <$> stok KOpaque
     )
 
 argsOf :: Parser a -> Parser (WithWs PosToken, ([a], [WithWs PosToken]), WithWs PosToken)
@@ -339,11 +374,11 @@ lit =
   <|> fmap (second StringLit) <$> stringLit
 
 mkApp :: Meta -> Expr -> [Expr] -> Expr
-mkApp m e@(Var mVar (Variable mInner n)) es =
+mkApp m e@(Var varMeta (Variable mInner n)) es =
   case Map.lookup n builtins of
-    Just b  -> Builtin (mVar <> mInner <> m) b es
-    Nothing -> App m e es
-mkApp m e es = App m e es
+    Just b  -> Builtin (mInner <> m) b es
+    Nothing -> App (mkMeta [mkHoleWithType varMeta] <> m) e es
+mkApp m e es = App (mkMeta [mkHole] <> m) e es
 
 builtins :: Map Name Builtin
 builtins =
@@ -376,39 +411,43 @@ evalDeclP :: Parser Decl
 evalDeclP = do
   evalDirective <- sdirective "eval"
   e <- expr
-  pure $ Eval (wsMeta [evalDirective]) e
+  pure $ Eval (mkMeta [fromWs evalDirective, mkHoleWithType e]) e
 
 nonRecDeclP :: Parser Decl
 nonRecDeclP = do
-  t <- transparency -- TODO: transparency is optional
+  (tMeta, t) <- transparency
   var <- variable
   eqTok <- stok Equals
   e <- expr
   pure $ NonRec
     (mkMeta
-      [ fst t
-      , mkClusterMeta eqTok
+      [ tMeta
+      , mkHoleWithType var
+      , fromWs eqTok
+      , mkHoleWithType e
       ]
     )
-    (snd t)
+    t
     var
     e
 
 recDeclP :: Parser Decl
 recDeclP = do
   r <- stok KRec
-  t <- transparency -- TODO: transparency is optional
+  (tMeta, t) <- transparency
   var <- variable
   eqTok <- stok Equals
   e <- expr
   pure $ Rec
     (mkMeta
-      [ mkClusterMeta r
-      , fst t
-      , mkClusterMeta eqTok
+      [ fromWs r
+      , tMeta
+      , mkHoleWithType var
+      , fromWs eqTok
+      , mkHoleWithType e
       ]
     )
-    (snd t)
+    t
     var
     e
 
@@ -478,7 +517,7 @@ attachTrailingWhiteSpace tokWithWs = \case
   Rec meta t n e -> Rec (attach meta) t n e
   Eval meta e -> Eval (attach meta) e
   where
-    attach (Meta toks) = (Meta $ toks <> [mkClusterMeta tokWithWs])
+    attach (Meta toks) = (Meta $ toks <> [fromWs tokWithWs])
 
 attachHiddenSemicolonToken :: Decl -> Decl
 attachHiddenSemicolonToken = \case
@@ -486,13 +525,13 @@ attachHiddenSemicolonToken = \case
   Rec meta t n e -> Rec (attach meta) t n e
   Eval meta e -> Eval (attach meta) e
   where
-    attach (Meta toks) = (Meta $ toks <> [mkHiddenClusterMeta Semicolon])
+    attach m = m <> mkMeta [mkCsn $ mkHiddenClusterMeta Semicolon]
 
 -- ----------------------------------------------------------------------------
 -- Parser Utilities
 -- ----------------------------------------------------------------------------
 
-betweenP :: Parser (WithWs open) -> Parser (WithWs close) -> Parser b -> Parser (WithWs open, b, WithWs close)
+betweenP :: Parser open -> Parser close -> Parser b -> Parser (open, b, close)
 betweenP open close p = do
   openWs <- open
   pWs <- p

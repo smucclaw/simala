@@ -4,34 +4,47 @@ module Simala.Expr.Metadata where
 
 import Base.Text
 import Data.List qualified as List
-import GHC.Stack
 import Simala.Expr.Lexer
 import qualified Data.Foldable as Foldable
 
-data TokenVisibility
-  = -- | A token that is hidden because it was inserted by some tool.
+data NodeVisibility
+  = -- | A token cluster that is hidden because it was inserted by some tool.
     -- The user did not write it.
     Hidden
   | -- | A token written by the user.
     Visible
   deriving stock (Show, Ord, Eq, Enum, Bounded)
 
-data TokenCluster = TokenCluster
+data ConcreteSyntaxNode = ConcreteSyntaxNode
   { tokens :: [PosToken]
   , tokenRange :: Maybe SrcRange
-  , tokenVisibility :: TokenVisibility
+  , tokenVisibility :: NodeVisibility
   }
   deriving stock (Show, Ord, Eq)
 
 data ClusterMeta = ClusterMeta
-  { thisToken :: TokenCluster
-  , afterThisToken :: TokenCluster
+  { payload :: ConcreteSyntaxNode
+  , trailing :: ConcreteSyntaxNode
   , label :: Text
   }
   deriving stock (Show, Ord, Eq)
 
+data MetaElement
+  = MetaHole
+  | MetaCsn ClusterMeta
+  deriving stock (Show, Ord, Eq)
+
+mkHoleWithType :: a -> MetaElement
+mkHoleWithType _ = MetaHole
+
+mkHole :: MetaElement
+mkHole = MetaHole
+
+mkCsn :: ClusterMeta -> MetaElement
+mkCsn = MetaCsn
+
 data Meta = Meta
-  { cstTokens :: [ClusterMeta]
+  { cstTokens :: [MetaElement]
   }
   deriving stock (Show, Ord, Eq)
 
@@ -41,18 +54,10 @@ instance Semigroup Meta where
 instance Monoid Meta where
   mempty = emptyMeta
 
-
-tokensAt :: HasCallStack => Meta -> Int -> [PosToken]
-tokensAt m n =
-  let
-    cluster = m.cstTokens !! n
-  in
-    csTokens cluster
-
 csTokens :: ClusterMeta -> [PosToken]
-csTokens cluster = cluster.thisToken.tokens <> cluster.afterThisToken.tokens
+csTokens cluster = cluster.payload.tokens <> cluster.trailing.tokens
 
-mkMeta :: [ClusterMeta] -> Meta
+mkMeta :: [MetaElement] -> Meta
 mkMeta = Meta
 
 emptyMeta :: Meta
@@ -64,9 +69,9 @@ isEmptyMeta m = List.null m.cstTokens
 sizeOfMeta :: Meta -> Int
 sizeOfMeta m = List.length m.cstTokens
 
-mkTokenCluster :: [PosToken] -> TokenCluster
-mkTokenCluster posTokens =
-  TokenCluster
+mkConcreteSyntaxNode :: [PosToken] -> ConcreteSyntaxNode
+mkConcreteSyntaxNode posTokens =
+  ConcreteSyntaxNode
     { tokens = posTokens
     , tokenRange = Nothing -- TODO fendor: fix this
     , tokenVisibility =
@@ -78,8 +83,8 @@ mkTokenCluster posTokens =
 mkHiddenClusterMeta :: TokenType -> ClusterMeta
 mkHiddenClusterMeta tt =
   ClusterMeta
-    { thisToken = mkTokenCluster []
-    , afterThisToken = mkTokenCluster []
+    { payload = mkConcreteSyntaxNode []
+    , trailing = mkConcreteSyntaxNode []
     , label = tokenTypeLabel tt
     }
 
@@ -92,22 +97,22 @@ queryLabel = \case
   Exact label -> label
   After label -> label
 
-lookupTokens :: (HasCallStack) => Lookup -> Meta -> TokenCluster
-lookupTokens query m =
-  let
-    tokenMeta = lookupTokensByLabel (queryLabel query) m
-  in
-    case query of
-      Exact{} -> tokenMeta.thisToken
-      After{} -> tokenMeta.afterThisToken
+-- lookupTokens :: (HasCallStack) => Lookup -> Meta -> ConcreteSyntaxNode
+-- lookupTokens query m =
+--   let
+--     tokenMeta = lookupTokensByLabel (queryLabel query) m
+--   in
+--     case query of
+--       Exact{} -> tokenMeta.thisToken
+--       After{} -> tokenMeta.afterThisToken
 
-lookupTokensByLabel :: (HasCallStack) => Text -> Meta -> ClusterMeta
-lookupTokensByLabel csnLabel m =
-  case List.find (\t -> t.label == csnLabel) m.cstTokens of
-    Nothing ->
-      error $
-        "lookupTokensByLabel: Concrete Syntax Node: \""
-          <> unpack csnLabel
-          <> "\" not found in: "
-          <> show (fmap (\t -> unpack t.label) m.cstTokens)
-    Just meta -> meta
+-- lookupTokensByLabel :: (HasCallStack) => Text -> Meta -> ClusterMeta
+-- lookupTokensByLabel csnLabel m =
+--   case List.find (\t -> t.label == csnLabel) m.cstTokens of
+--     Nothing ->
+--       error $
+--         "lookupTokensByLabel: Concrete Syntax Node: \""
+--           <> unpack csnLabel
+--           <> "\" not found in: "
+--           <> show (fmap (\t -> unpack t.label) m.cstTokens)
+--     Just meta -> meta
