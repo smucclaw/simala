@@ -60,6 +60,23 @@ executable simala
     simala
   main-is: Main.hs
 
+executable simala-lsp
+  import: defaults
+  hs-source-dirs: lsp
+  build-depends:
+    simala,
+    aeson,
+    containers,
+    directory,
+    filepath,
+    lens,
+    lsp-types ^>=2.3.0.0,
+    lsp ^>=2.7.0.0,
+    text,
+    text-rope,
+    transformers,
+  main-is: Main.hs
+
 test-suite simala-test
   import: defaults
   type: exitcode-stdio-1.0

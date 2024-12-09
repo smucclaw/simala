@@ -66,9 +66,6 @@ emptyMeta = mkMeta []
 isEmptyMeta :: Meta -> Bool
 isEmptyMeta m = List.null m.cstTokens
 
-sizeOfMeta :: Meta -> Int
-sizeOfMeta m = List.length m.cstTokens
-
 mkConcreteSyntaxNode :: [PosToken] -> ConcreteSyntaxNode
 mkConcreteSyntaxNode posTokens =
   ConcreteSyntaxNode

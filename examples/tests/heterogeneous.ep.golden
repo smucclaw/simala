@@ -1,0 +1,6 @@
+opaque map = fun (f, xs) => foldr (fun (x, r) => f(x) : r, [], xs);
+
+list = [ 1, 2, 'unknown, 3, 4 ];
+
+#eval map (fun (x) => x != 'unknown, list);
+#eval map (fun (x) => x != 2, list)

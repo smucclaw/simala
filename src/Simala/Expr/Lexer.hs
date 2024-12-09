@@ -505,58 +505,70 @@ tokenTypeLabel =
     BlockComment _  -> "blockcomment"
     EOF             -> "eof"
 
-posTokenCategory :: TokenType -> Text
+data TokenCategory
+  = CIdentifier
+  | CStringLit
+  | CNumberLit
+  | CSymbol
+  | COperator
+  | CKeyword
+  | CComment
+  | CWhitespace
+  | CDirective
+  | CEOF
+
+posTokenCategory :: TokenType -> TokenCategory
 posTokenCategory =
   \case
-    Identifier _    -> "identifier"
-    Quoted _        -> "identifier"
-    TIntLit _       -> "literal"
-    TFracLit _      -> "literal"
-    TStringLit _    -> "literal"
-    Directive _     -> "directive"
-    POpen           -> "symbol"
-    PClose          -> "symbol"
-    COpen           -> "symbol"
-    CClose          -> "symbol"
-    SOpen           -> "symbol"
-    SClose          -> "symbol"
-    Comma           -> "symbol"
-    Semicolon       -> "symbol"
-    Dot             -> "symbol"
-    Implies         -> "symbol"
-    Times           -> "operator"
-    Divides         -> "operator"
-    Percent         -> "operator"
-    Plus            -> "operator"
-    TMinus          -> "operator"
-    PlusPlus        -> "operator"
-    Colon           -> "symbol"
-    GreaterEquals   -> "operator"
-    LessEquals      -> "operator"
-    GreaterThan     -> "operator"
-    LessThan        -> "operator"
-    Equals          -> "symbol"
-    EqualsEquals    -> "operator"
-    NotEquals       -> "operator"
-    ApproxEquals    -> "operator"
-    TAnd            -> "operator"
-    TOr             -> "operator"
-    Quote           -> "symbol"
-    OtherSymbolic _ -> "symbol"
-    KFalse          -> "keyword"
-    KTrue           -> "keyword"
-    KLet            -> "keyword"
-    KLetrec         -> "keyword"
-    KIn             -> "keyword"
-    KIf             -> "keyword"
-    KThen           -> "keyword"
-    KElse           -> "keyword"
-    KFun            -> "keyword"
-    KUndefined      -> "keyword"
-    KOpaque         -> "keyword"
-    KTransparent    -> "keyword"
-    KRec            -> "keyword"
-    WhiteSpace _    -> "whitespace"
-    LineComment _   -> "whitespace"
-    BlockComment _  -> "whitespace"
-    EOF             -> "eof"
+    Identifier _    -> CIdentifier
+    Quoted _        -> CIdentifier
+    TIntLit _       -> CNumberLit
+    TFracLit _      -> CNumberLit
+    TStringLit _    -> CStringLit
+    Directive _     -> CDirective
+    POpen           -> CSymbol
+    PClose          -> CSymbol
+    COpen           -> CSymbol
+    CClose          -> CSymbol
+    SOpen           -> CSymbol
+    SClose          -> CSymbol
+    Comma           -> CSymbol
+    Semicolon       -> CSymbol
+    Dot             -> CSymbol
+    Implies         -> CSymbol
+    Times           -> COperator
+    Divides         -> COperator
+    Percent         -> COperator
+    Plus            -> COperator
+    TMinus          -> COperator
+    PlusPlus        -> COperator
+    Colon           -> CSymbol
+    GreaterEquals   -> COperator
+    LessEquals      -> COperator
+    GreaterThan     -> COperator
+    LessThan        -> COperator
+    Equals          -> CSymbol
+    EqualsEquals    -> COperator
+    NotEquals       -> COperator
+    ApproxEquals    -> COperator
+    TAnd            -> COperator
+    TOr             -> COperator
+    Quote           -> CSymbol
+    OtherSymbolic _ -> CSymbol
+    KFalse          -> CKeyword
+    KTrue           -> CKeyword
+    KLet            -> CKeyword
+    KLetrec         -> CKeyword
+    KIn             -> CKeyword
+    KIf             -> CKeyword
+    KThen           -> CKeyword
+    KElse           -> CKeyword
+    KFun            -> CKeyword
+    KUndefined      -> CKeyword
+    KOpaque         -> CKeyword
+    KTransparent    -> CKeyword
+    KRec            -> CKeyword
+    WhiteSpace _    -> CWhitespace
+    LineComment _   -> CComment
+    BlockComment _  -> CComment
+    EOF             -> CEOF
