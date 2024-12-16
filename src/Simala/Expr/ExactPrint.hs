@@ -28,15 +28,6 @@ exprToTokens = \case
   Undefined m -> applyTokensWithHoles m []
   Parens m e -> applyTokensWithHoles m [exprToTokens e]
 
-type HoleFit = [PosToken]
-
-applyTokensWithHoles :: (HasCallStack) => Meta -> [HoleFit] -> [PosToken]
-applyTokensWithHoles (Meta []) _ = []
-applyTokensWithHoles (Meta (MetaHole : cs)) holeFits = case holeFits of
-  [] -> error $ "applyTokensWithHoles: HoleFit requested, but not enough Fits given."
-  (x : xs) -> x <> applyTokensWithHoles (Meta cs) xs
-applyTokensWithHoles (Meta (MetaCsn m : cs)) xs = csTokens m <> applyTokensWithHoles (Meta cs) xs
-
 collectLetDecls :: Expr -> ([Decl], Expr)
 collectLetDecls = go []
  where
@@ -58,3 +49,12 @@ declToPosTokens = \case
   NonRec m _t name e -> applyTokensWithHoles m [variableToPosTokens name, exprToTokens e]
   Rec m _t name e -> applyTokensWithHoles m [variableToPosTokens name, exprToTokens e]
   Eval m e -> applyTokensWithHoles m [exprToTokens e]
+
+type HoleFit = [PosToken]
+
+applyTokensWithHoles :: (HasCallStack) => Meta -> [HoleFit] -> [PosToken]
+applyTokensWithHoles (Meta []) _ = []
+applyTokensWithHoles (Meta (MetaHole : cs)) holeFits = case holeFits of
+  [] -> error $ "applyTokensWithHoles: HoleFit requested, but not enough Fits given."
+  (x : xs) -> x <> applyTokensWithHoles (Meta cs) xs
+applyTokensWithHoles (Meta (MetaCsn m : cs)) xs = csTokens m <> applyTokensWithHoles (Meta cs) xs

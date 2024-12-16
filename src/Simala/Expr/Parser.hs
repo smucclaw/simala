@@ -190,7 +190,7 @@ funAppOp = do
   (open, (args, seps), close) <- argsOf expr
   pure $ \e ->
     mkApp
-      -- Usually, `e` should be 
+      -- Usually, `e` should be
       (mkMeta $ [fromWs open] <> betweenHoles args (fmap fromWs seps) <> [fromWs close])
       e
       args
@@ -574,6 +574,5 @@ sepEndBy1P p sep = do
       pure (as, s : seps)
       <|> pure ([], [])
   pure (a : as, seps)
-
 {-# INLINEABLE sepEndBy1P #-}
 

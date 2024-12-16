@@ -54,6 +54,8 @@ data Expr =
   | Project    Meta Expr Variable                   -- record projection
   | Fun        Meta Transparency [Variable] Expr    -- anonymous function
   | Let        Meta Decl Expr                   -- possibly recursive let-binding
+  -- let <decl> in <expr>
+  -- ["let", hole, "in", hole] [decl, expr]
   | Undefined  Meta                             -- unclear
   | Parens     Meta Expr
   deriving stock Show

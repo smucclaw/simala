@@ -258,6 +258,28 @@ exprSemanticTokens = \case
   Undefined m -> traverseCsnWithHoles m []
   Parens m e -> traverseCsnWithHoles m [exprSemanticTokens e]
 
+collectLetDecls :: Expr -> ([Decl], Expr)
+collectLetDecls = go []
+ where
+  go ds (Let m d e)
+    | isEmptyMeta m = go (ds <> [d]) e
+  go ds e = (ds, e)
+
+rowsSemanticTokens :: Rows Expr -> Reader (SemanticTokenCtx PosToken) [SemanticToken]
+rowsSemanticTokens (Rows m rows) = traverseCsnWithHoles m $ fmap rowSemanticTokens rows
+
+rowSemanticTokens :: Row Expr -> Reader (SemanticTokenCtx PosToken) [SemanticToken]
+rowSemanticTokens (Row m var e) = traverseCsnWithHoles m [varSemanticTokens var, exprSemanticTokens e]
+
+varSemanticTokens :: Variable -> Reader (SemanticTokenCtx PosToken) [SemanticToken]
+varSemanticTokens (Variable m _name) = traverseCsnWithHoles m []
+
+declSemanticTokens :: Decl -> Reader (SemanticTokenCtx PosToken) [SemanticToken]
+declSemanticTokens = \case
+  NonRec m _t name e -> traverseCsnWithHoles m [withModifier defVar $ varSemanticTokens name, exprSemanticTokens e]
+  Rec m _t name e -> traverseCsnWithHoles m [withModifier defVar $ varSemanticTokens name, exprSemanticTokens e]
+  Eval m e -> traverseCsnWithHoles m [exprSemanticTokens e]
+
 traverseCsnWithHoles :: (HasCallStack) => Meta -> [Reader (SemanticTokenCtx PosToken) HoleFit] -> Reader (SemanticTokenCtx PosToken) [SemanticToken]
 traverseCsnWithHoles (Meta []) _ = pure []
 traverseCsnWithHoles (Meta (MetaHole : cs)) holeFits = case holeFits of
@@ -290,25 +312,3 @@ srcPosToPosition s =
     { _character = fromIntegral s.column - 1
     , _line = fromIntegral s.line - 1
     }
-
-collectLetDecls :: Expr -> ([Decl], Expr)
-collectLetDecls = go []
- where
-  go ds (Let m d e)
-    | isEmptyMeta m = go (ds <> [d]) e
-  go ds e = (ds, e)
-
-rowsSemanticTokens :: Rows Expr -> Reader (SemanticTokenCtx PosToken) [SemanticToken]
-rowsSemanticTokens (Rows m rows) = traverseCsnWithHoles m $ fmap rowSemanticTokens rows
-
-rowSemanticTokens :: Row Expr -> Reader (SemanticTokenCtx PosToken) [SemanticToken]
-rowSemanticTokens (Row m var e) = traverseCsnWithHoles m [varSemanticTokens var, exprSemanticTokens e]
-
-varSemanticTokens :: Variable -> Reader (SemanticTokenCtx PosToken) [SemanticToken]
-varSemanticTokens (Variable m _name) = traverseCsnWithHoles m []
-
-declSemanticTokens :: Decl -> Reader (SemanticTokenCtx PosToken) [SemanticToken]
-declSemanticTokens = \case
-  NonRec m _t name e -> traverseCsnWithHoles m [withModifier defVar $ varSemanticTokens name, exprSemanticTokens e]
-  Rec m _t name e -> traverseCsnWithHoles m [withModifier defVar $ varSemanticTokens name, exprSemanticTokens e]
-  Eval m e -> traverseCsnWithHoles m [exprSemanticTokens e]
