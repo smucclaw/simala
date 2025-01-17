@@ -122,7 +122,7 @@ lam4Builtin _ b          _es          = error $ "unspported builtin: " <> show b
 
 scanAnd :: Expr -> [Expr]
 scanAnd (Builtin And [e1, e2]) =
-  e1 : scanOr e2
+  e1 : scanAnd e2
 scanAnd e = [e]
 
 scanOr :: Expr -> [Expr]
